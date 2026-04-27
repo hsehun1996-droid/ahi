@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.spec
+highway.log
+startup_error.log
+project1.zip
+gs10060w64.exe
