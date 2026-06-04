@@ -70,6 +70,8 @@ CANVAS_FONT_XL  = 11
 
 # 현재 적용된 디스플레이 스케일 (apply_display_scale 호출 시 갱신)
 DISPLAY_SCALE = 1.0
+# 스케일 기준 해상도 너비. 이 값에서 스케일=1.0, 그 외엔 (해상도/REFERENCE_WIDTH) 비율 적용.
+REFERENCE_WIDTH = 1920
 
 # ---- 스케일 기준값 (apply_display_scale 에서 참조) ----
 _BASE_PX_PER_KM          = 160
@@ -110,27 +112,27 @@ def apply_display_scale(scale: float) -> None:
     s = max(0.5, min(2.0, float(scale)))
     DISPLAY_SCALE = s
 
-    PX_PER_KM             = max(60,  int(_BASE_PX_PER_KM * s))
-    CANVAS_WIDGET_H       = max(220, int(_BASE_CANVAS_WIDGET_H * s))
-    DETAIL_CANVAS_H       = max(120, int(_BASE_DETAIL_CANVAS_H * s))
-    RAMP_BAR_W            = max(200, int(_BASE_RAMP_BAR_W * s))
-    RAMP_BAR_H            = max(10,  int(_BASE_RAMP_BAR_H * s))
-    RAMP_BAR_GAP_Y        = max(15,  int(_BASE_RAMP_BAR_GAP_Y * s))
-    RAMP_PX_PER_KM        = max(40,  int(_BASE_RAMP_PX_PER_KM * s))
-    RAMP_LANE_GAP_Y       = max(3,   int(_BASE_RAMP_LANE_GAP_Y * s))
-    IC_BOX_W              = max(20,  int(_BASE_IC_BOX_W * s))
-    IC_GAP_MARGIN         = max(6,   int(_BASE_IC_GAP_MARGIN * s))
-    CANVAS_BAR_H          = max(50,  int(_BASE_CANVAS_BAR_H * s))
-    CANVAS_TOP_MARGIN     = max(30,  int(_BASE_CANVAS_TOP_MARGIN * s))
-    CANVAS_DIR_GAP        = max(10,  int(_BASE_CANVAS_DIR_GAP * s))
-    CANVAS_KM_LBL_OFFSET  = max(8,   int(_BASE_CANVAS_KM_LBL_OFF * s))
-    CANVAS_DIR_LBL_OFFSET = max(18,  int(_BASE_CANVAS_DIR_LBL_OFF * s))
-    CANVAS_IC_CHAR_H      = max(10,  int(_BASE_CANVAS_IC_CHAR_H * s))
-    CANVAS_FONT_XS        = max(6,   int(_BASE_CANVAS_FONT_XS * s))
-    CANVAS_FONT_S         = max(6,   int(_BASE_CANVAS_FONT_S * s))
-    CANVAS_FONT_M         = max(7,   int(_BASE_CANVAS_FONT_M * s))
-    CANVAS_FONT_L         = max(8,   int(_BASE_CANVAS_FONT_L * s))
-    CANVAS_FONT_XL        = max(9,   int(_BASE_CANVAS_FONT_XL * s))
+    PX_PER_KM             = max(60,  round(_BASE_PX_PER_KM * s))
+    CANVAS_WIDGET_H       = max(220, round(_BASE_CANVAS_WIDGET_H * s))
+    DETAIL_CANVAS_H       = max(120, round(_BASE_DETAIL_CANVAS_H * s))
+    RAMP_BAR_W            = max(200, round(_BASE_RAMP_BAR_W * s))
+    RAMP_BAR_H            = max(10,  round(_BASE_RAMP_BAR_H * s))
+    RAMP_BAR_GAP_Y        = max(15,  round(_BASE_RAMP_BAR_GAP_Y * s))
+    RAMP_PX_PER_KM        = max(40,  round(_BASE_RAMP_PX_PER_KM * s))
+    RAMP_LANE_GAP_Y       = max(3,   round(_BASE_RAMP_LANE_GAP_Y * s))
+    IC_BOX_W              = max(20,  round(_BASE_IC_BOX_W * s))
+    IC_GAP_MARGIN         = max(6,   round(_BASE_IC_GAP_MARGIN * s))
+    CANVAS_BAR_H          = max(50,  round(_BASE_CANVAS_BAR_H * s))
+    CANVAS_TOP_MARGIN     = max(30,  round(_BASE_CANVAS_TOP_MARGIN * s))
+    CANVAS_DIR_GAP        = max(10,  round(_BASE_CANVAS_DIR_GAP * s))
+    CANVAS_KM_LBL_OFFSET  = max(8,   round(_BASE_CANVAS_KM_LBL_OFF * s))
+    CANVAS_DIR_LBL_OFFSET = max(18,  round(_BASE_CANVAS_DIR_LBL_OFF * s))
+    CANVAS_IC_CHAR_H      = max(10,  round(_BASE_CANVAS_IC_CHAR_H * s))
+    CANVAS_FONT_XS        = max(6,   round(_BASE_CANVAS_FONT_XS * s))
+    CANVAS_FONT_S         = max(6,   round(_BASE_CANVAS_FONT_S * s))
+    CANVAS_FONT_M         = max(7,   round(_BASE_CANVAS_FONT_M * s))
+    CANVAS_FONT_L         = max(8,   round(_BASE_CANVAS_FONT_L * s))
+    CANVAS_FONT_XL        = max(9,   round(_BASE_CANVAS_FONT_XL * s))
 
 
 def _detect_auto_scale() -> float:
@@ -151,16 +153,9 @@ def _detect_auto_scale() -> float:
         sw = int(_ct.windll.user32.GetSystemMetrics(0))
     except Exception:
         return 1.0
-    if sw >= 2560:
-        return 1.1
-    elif sw >= 1920:
-        return 1.0
-    elif sw >= 1600:
-        return 0.9
-    elif sw >= 1366:
-        return 0.85
-    else:
-        return 0.75
+    # 기준 해상도(REFERENCE_WIDTH=1920) 대비 정확한 비율로 스케일 결정
+    #   예) 1280 → 1280/1920 = 0.667,  2560 → 1.333
+    return max(0.5, min(2.0, sw / float(REFERENCE_WIDTH)))
 
 
 def _init_display_scale_from_file() -> None:

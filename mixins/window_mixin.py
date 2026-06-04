@@ -157,7 +157,10 @@ class WindowMixin:
         try:
             scale = self._load_display_scale()
             ctk.set_widget_scaling(scale)
-            ctk.set_window_scaling(scale)
+            # 창 크기는 실제 픽셀 기준으로 둔다(window_scaling=1.0).
+            # 위젯/모식도만 scale로 축소하고, 창은 선택한 해상도(win_w/win_h) 그대로 →
+            # window_scaling까지 곱해 창이 과도하게 작아지던 '이중 스케일' 방지.
+            ctk.set_window_scaling(1.0)
             self._current_display_scale = scale
         except Exception:
             self._current_display_scale = 1.0
@@ -226,13 +229,16 @@ class WindowMixin:
                      font=(self.font_family, 11), text_color="#718096").pack(pady=(0, 8))
 
         # 해상도 프리셋 (너비, 높이, 설명, 기준 스케일)
+        # 스케일 = 해상도너비 / 1920(기준). 모식도·위젯이 해상도 비율대로 정확히 축소/확대됨.
+        #   예) 1280 → 0.667,  1600 → 0.833,  2560 → 1.333
+        _ref = float(REFERENCE_WIDTH)
         PRESETS = [
             (0,    0,    f"자동 감지  ({sw}×{sh})",         None),
-            (1280, 720,  "소형  1280 × 720",                 0.80),
-            (1366, 768,  "소형+  1366 × 768",                0.85),
-            (1600, 900,  "중형  1600 × 900",                 0.90),
-            (1920, 1080, "대형  1920 × 1080",                1.00),
-            (2560, 1440, "초대형  2560 × 1440",              1.15),
+            (1280, 720,  "소형  1280 × 720",                 1280 / _ref),
+            (1366, 768,  "소형+  1366 × 768",                1366 / _ref),
+            (1600, 900,  "중형  1600 × 900",                 1600 / _ref),
+            (1920, 1080, "대형  1920 × 1080",                1920 / _ref),
+            (2560, 1440, "초대형  2560 × 1440",              2560 / _ref),
         ]
 
         # 현재 저장된 설정에서 선택 항목 결정
