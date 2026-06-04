@@ -155,7 +155,7 @@ class CanvasMixin:
                     except Exception:
                         tc = "#FFFFFF"
                     canvas.create_text((sx1+sx2)/2, (y1+y2)/2, text=f"'{year[2:]}",
-                                       fill=tc, font=(self.font_family, 8), tags=("entry_label",))
+                                       fill=tc, font=(self.font_family, CANVAS_FONT_S), tags=("entry_label",))
                 if item_map is not None:
                     item_map[item_id] = idx
                 geoms.append((sx1, sx2, y1, y2, idx, yr_int, expiry_yr))
@@ -334,22 +334,28 @@ class CanvasMixin:
 
     def _draw_condition_bands(self, canvas, route, bar1_top, bar2_top, bar_h, lane_count,
                                x_of_km, view_hpci, view_di, view_aar,
+                               view_rd=False, view_iri=False,
                                r_start=None, r_end=None, font_family="", pdf_mode=False,
                                selected_year="모두"):
-        """HPCI/DI/AAR 등급을 각 차로 구간에 색상 띠로 렌더링."""
-        num_views = view_hpci + view_di + view_aar
+        """HPCI/DI/AAR/RD/IRI 등급을 각 차로 구간에 색상 띠로 렌더링."""
+        num_views = view_hpci + view_di + view_aar + view_rd + view_iri
         if num_views == 0:
             return
         hpci_data = route.get('hpci_data', {})
         di_data   = route.get('di_data', {})
         aar_data  = route.get('aar_data', {})
-        all_keys  = set(hpci_data.keys()) | set(di_data.keys()) | set(aar_data.keys())
+        rd_data   = route.get('rd_data', {})
+        iri_data  = route.get('iri_data', {})
+        all_keys  = (set(hpci_data.keys()) | set(di_data.keys()) | set(aar_data.keys())
+                     | set(rd_data.keys()) | set(iri_data.keys()))
         if not all_keys:
             return
 
         hpci_colors = {5: "#FEE2E2", 6: "#FCA5A5", 7: "#EF4444"}
         di_colors   = {5: "#BFDBFE", 6: "#60A5FA", 7: "#2563EB"}
         aar_colors  = {2: "#C6F6D5", 3: "#68D391", 4: "#38A169"}
+        rd_colors   = {5: "#FEF3C7", 6: "#FCD34D", 7: "#F59E0B"}
+        iri_colors  = {5: "#EDE9FE", 6: "#A78BFA", 7: "#7C3AED"}
 
         def _get_for_year(data_map):
             """연도 필터에 맞는 값을 반환합니다. 필터가 없으면 최신 연도."""
@@ -385,21 +391,34 @@ class CanvasMixin:
             y1 = (top + (n - 1) * seg_h if top == bar2_top else top + bar_h - n * seg_h) + 2
             y2 = y1 + seg_h - 4
 
+            single_view = (pdf_mode and num_views == 1)
             if num_views > 1:
-                sub_h = (y2 - y1) / 3
-                y_hpci_1, y_hpci_2 = y1, y1 + sub_h
-                y_di_1,   y_di_2   = y1 + sub_h, y1 + 2 * sub_h
-                y_aar_1,  y_aar_2  = y1 + 2 * sub_h, y2
+                sub_h = (y2 - y1) / num_views
                 font_size = 6
+                vi = 0
+                y_hpci_1 = y_hpci_2 = y_di_1 = y_di_2 = y_aar_1 = y_aar_2 = y_rd_1 = y_rd_2 = y_iri_1 = y_iri_2 = None
+                if view_hpci:
+                    y_hpci_1, y_hpci_2 = y1 + vi * sub_h, y1 + (vi + 1) * sub_h; vi += 1
+                if view_di:
+                    y_di_1, y_di_2 = y1 + vi * sub_h, y1 + (vi + 1) * sub_h; vi += 1
+                if view_aar:
+                    y_aar_1, y_aar_2 = y1 + vi * sub_h, y1 + (vi + 1) * sub_h; vi += 1
+                if view_rd:
+                    y_rd_1, y_rd_2 = y1 + vi * sub_h, y1 + (vi + 1) * sub_h; vi += 1
+                if view_iri:
+                    y_iri_1, y_iri_2 = y1 + vi * sub_h, y1 + (vi + 1) * sub_h; vi += 1
             else:
-                y_hpci_1 = y_hpci_2 = y_di_1 = y_di_2 = y_aar_1 = y_aar_2 = None
-                y_hpci_1, y_hpci_2 = y_di_1, y_di_2 = y_aar_1, y_aar_2 = y1, y2
+                y_hpci_1 = y_hpci_2 = y_di_1 = y_di_2 = y_aar_1 = y_aar_2 = y_rd_1 = y_rd_2 = y_iri_1 = y_iri_2 = None
+                if view_hpci: y_hpci_1, y_hpci_2 = y1, y2
+                if view_di:   y_di_1, y_di_2 = y1, y2
+                if view_aar:  y_aar_1, y_aar_2 = y1, y2
+                if view_rd:   y_rd_1, y_rd_2 = y1, y2
+                if view_iri:  y_iri_1, y_iri_2 = y1, y2
                 font_size = 9
 
-            single_view = (pdf_mode and num_views == 1)
             fs = (font_family, font_size, "normal")
 
-            if view_hpci:
+            if view_hpci and y_hpci_1 is not None:
                 g = _get_for_year(hpci_data.get((d, l, skm_str)))
                 if g is not None:
                     if g in hpci_colors:
@@ -407,7 +426,7 @@ class CanvasMixin:
                     if g in hpci_colors or single_view:
                         canvas.create_text((x1+x2)/2, (y_hpci_1+y_hpci_2)/2, text=str(g),
                                            fill="#000000", font=fs, tags=("hpci_label",))
-            if view_di:
+            if view_di and y_di_1 is not None:
                 v = _get_for_year(di_data.get((d, l, skm_str)))
                 if v is not None:
                     g = int(v); cg = min(g, 7)
@@ -416,7 +435,7 @@ class CanvasMixin:
                     if cg in di_colors or single_view:
                         canvas.create_text((x1+x2)/2, (y_di_1+y_di_2)/2, text=str(g),
                                            fill="#000000", font=fs, tags=("di_label",))
-            if view_aar:
+            if view_aar and y_aar_1 is not None:
                 g = _get_for_year(aar_data.get((d, l, skm_str)))
                 if g is not None:
                     if g in aar_colors:
@@ -424,10 +443,38 @@ class CanvasMixin:
                     if g in aar_colors or single_view:
                         canvas.create_text((x1+x2)/2, (y_aar_1+y_aar_2)/2, text=str(g),
                                            fill="#000000", font=fs, tags=("aar_label",))
+            if view_rd and y_rd_1 is not None:
+                v = _get_for_year(rd_data.get((d, l, skm_str)))
+                if v is not None:
+                    try:
+                        g = int(float(v)); cg = min(g, 7)
+                    except (ValueError, TypeError):
+                        cg = None
+                    if cg is not None:
+                        if cg in rd_colors:
+                            canvas.create_rectangle(x1+2, y_rd_1, x2-2, y_rd_2, fill=rd_colors[cg], outline="")
+                        if cg in rd_colors or single_view:
+                            canvas.create_text((x1+x2)/2, (y_rd_1+y_rd_2)/2, text=str(g),
+                                               fill="#000000", font=fs, tags=("rd_label",))
+            if view_iri and y_iri_1 is not None:
+                v = _get_for_year(iri_data.get((d, l, skm_str)))
+                if v is not None:
+                    try:
+                        g = int(float(v)); cg = min(g, 7)
+                    except (ValueError, TypeError):
+                        cg = None
+                    if cg is not None:
+                        if cg in iri_colors:
+                            canvas.create_rectangle(x1+2, y_iri_1, x2-2, y_iri_2, fill=iri_colors[cg], outline="")
+                        if cg in iri_colors or single_view:
+                            canvas.create_text((x1+x2)/2, (y_iri_1+y_iri_2)/2, text=str(g),
+                                               fill="#000000", font=fs, tags=("iri_label",))
 
         canvas.tag_raise("hpci_label")
         canvas.tag_raise("di_label")
         canvas.tag_raise("aar_label")
+        canvas.tag_raise("rd_label")
+        canvas.tag_raise("iri_label")
 
     def draw_schematic(self):
         # 요약 통계 항상 갱신 (노선 없을 때도)
@@ -439,8 +486,8 @@ class CanvasMixin:
         canvas = route["canvas"]
         canvas.delete("all")
         
-        # 보기 모드가 '기본'이 아니면(즉, HPCI/DI 중 하나라도 켜지면) view_mode를 'CONDITION'으로 설정
-        if self.view_hpci.get() or self.view_di.get() or self.view_aar.get():
+        # 보기 모드가 '기본'이 아니면(즉, 포장상태 항목 중 하나라도 켜지면) view_mode를 'CONDITION'으로 설정
+        if self.view_hpci.get() or self.view_di.get() or self.view_aar.get() or self.view_rd.get() or self.view_iri.get():
             self.view_mode.set("CONDITION")
         
         r_start = float(route["start_km"]); r_end = float(route["end_km"])
@@ -457,10 +504,10 @@ class CanvasMixin:
         total_w = int(span_km * PX_PER_KM) + 80 + total_gaps_px  # 갭 폭만큼 우측 여백 확대
         total_h = int(canvas.winfo_height()) or 360
 
-        # 레이아웃
-        top_margin = 60
-        bar_h = 110          # 각 방향 바 높이 (기존 90에서 1.5배 증가)
-        dir_gap = 20          # 방향 바 사이 간격
+        # 레이아웃 (display scale에 따라 constants.py에서 자동 조정)
+        top_margin = CANVAS_TOP_MARGIN
+        bar_h      = CANVAS_BAR_H
+        dir_gap    = CANVAS_DIR_GAP
         bar1_top = top_margin
         bar2_top = bar1_top + bar_h + dir_gap
         bar_bottom = bar2_top + bar_h
@@ -523,23 +570,24 @@ class CanvasMixin:
                 # 위/아래 바 내부에만 진한 세로선 (검은 실선, 약간 두껍게)
                 canvas.create_line(x, bar1_top, x, bar1_top + bar_h, fill=GRID_1KM_COLOR, width=2)
                 canvas.create_line(x, bar2_top, x, bar2_top + bar_h, fill=GRID_1KM_COLOR, width=2)
-                canvas.create_text(x, bar1_top - 16, text=f"{km_tick:.0f}k", fill=TEXT_COLOR, font=(self.font_family, 9))
-                canvas.create_text(x, bar2_top + bar_h + 16, text=f"{km_tick:.0f}k", fill=TEXT_COLOR, font=(self.font_family, 9))
+                canvas.create_text(x, bar1_top - CANVAS_KM_LBL_OFFSET, text=f"{km_tick:.0f}k", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_M))
+                canvas.create_text(x, bar2_top + bar_h + CANVAS_KM_LBL_OFFSET, text=f"{km_tick:.0f}k", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_M))
                 km_positions.append(x)
             km_tick += 1.0
 
         # 바탕 바 / 차로선 / 중분대 그리기
         lane_count = route.get("lane_count", 4)
         lane_y_positions = self._draw_bar_bg(canvas, gaps_px, total_w, bar_h, bar1_top, bar2_top, lane_count)
-        
-        # HPCI, DI, AAR 등급 그리기 (연도 필터 반영)
+
+        # HPCI, DI, AAR, RD, IRI 등급 그리기 (연도 필터 반영)
         self._draw_condition_bands(
             canvas, route, bar1_top, bar2_top, bar_h, lane_count, x_of_km,
             self.view_hpci.get(), self.view_di.get(), self.view_aar.get(),
+            view_rd=self.view_rd.get(), view_iri=self.view_iri.get(),
             font_family=self.font_family, selected_year=selected_year)
         # 방향 라벨 (스크롤해도 고정 위치 유지)
-        dir_lbl1 = canvas.create_text(24, bar1_top - 36, anchor="w", text=f"{route['directions'][0]}", fill=TEXT_COLOR, font=(self.font_family, 10, "bold"), tags="dir_label")
-        dir_lbl2 = canvas.create_text(24, bar2_top + bar_h + 36, anchor="w", text=f"{route['directions'][1]}", fill=TEXT_COLOR, font=(self.font_family, 10, "bold"), tags="dir_label")
+        dir_lbl1 = canvas.create_text(24, bar1_top - CANVAS_DIR_LBL_OFFSET, anchor="w", text=f"{route['directions'][0]}", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_L, "bold"), tags="dir_label")
+        dir_lbl2 = canvas.create_text(24, bar2_top + bar_h + CANVAS_DIR_LBL_OFFSET, anchor="w", text=f"{route['directions'][1]}", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_L, "bold"), tags="dir_label")
         _dir_label_ys = (bar1_top - 36, bar2_top + bar_h + 36)
         _dir_label_ids = (dir_lbl1, dir_lbl2)
 
@@ -584,20 +632,20 @@ class CanvasMixin:
                 # 이름 및 이정 (세로 쓰기, 중앙 정렬)
                 name = str(ic.get('name') or '')
                 km_str = f"{km:.1f}k"
-                char_h = 16
-                gap = 10
+                char_h = CANVAS_IC_CHAR_H
+                gap = max(6, char_h // 2)
                 total_text_h = (len(name) + len(km_str)) * char_h + gap
                 box_h = box_bottom - box_top
                 y_cursor = box_top + (box_h - total_text_h) / 2
 
                 for char in name:
-                    canvas.create_text(center_x, y_cursor + char_h/2, text=char, fill=IC_COLOR, font=(self.font_family, 11, "bold"), anchor="center")
+                    canvas.create_text(center_x, y_cursor + char_h/2, text=char, fill=IC_COLOR, font=(self.font_family, CANVAS_FONT_XL, "bold"), anchor="center")
                     y_cursor += char_h
-                
+
                 y_cursor += gap
-                
+
                 for char in km_str:
-                    canvas.create_text(center_x, y_cursor + char_h/2, text=char, fill=IC_COLOR, font=(self.font_family, 10, "bold"), anchor="center")
+                    canvas.create_text(center_x, y_cursor + char_h/2, text=char, fill=IC_COLOR, font=(self.font_family, CANVAS_FONT_L, "bold"), anchor="center")
                     y_cursor += char_h
 
                 # 램프 미니 모식도 그리기 제거 (요청에 따라 램프 이력 미사용)
@@ -1202,7 +1250,7 @@ class CanvasMixin:
 
     # ──────────────────────────────────────────────
 
-    def draw_schematic_for_pdf(self, canvas: tk.Canvas, route: dict, r_start: float, r_end: float, page_width: float, view_mode: str, route_start_total: float, route_end_total: float, view_hpci: bool, view_di: bool, view_aar: bool, structure_labels_to_draw: list, segment_index: int):
+    def draw_schematic_for_pdf(self, canvas: tk.Canvas, route: dict, r_start: float, r_end: float, page_width: float, view_mode: str, route_start_total: float, route_end_total: float, view_hpci: bool, view_di: bool, view_aar: bool, structure_labels_to_draw: list, segment_index: int, view_rd: bool = False, view_iri: bool = False):
         """PDF 내보내기를 위해 지정된 구간의 모식도만 그리는 함수"""
         canvas.delete("all")
         span_km = max(0.1, r_end - r_start)
@@ -1337,6 +1385,7 @@ class CanvasMixin:
             self._draw_condition_bands(
                 canvas, route, bar1_top, bar2_top, bar_h, lane_count, x_of_km,
                 view_hpci, view_di, view_aar,
+                view_rd=view_rd, view_iri=view_iri,
                 r_start=r_start, r_end=r_end, pdf_mode=True)
 
         # 오버레이 (격자, 눈금선, 차로선 등)

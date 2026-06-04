@@ -646,6 +646,9 @@ class UIMixin:
     def _configure_app_font_family(self):
         """프로젝트 fonts 폴더의 Noto Sans KR를 우선 등록하고 기본 UI 글꼴로 사용."""
         fonts_dir = os.path.join(get_user_data_dir(), "fonts")
+        if not os.path.isdir(fonts_dir):
+            # 패키징 시 번들 내(_MEIPASS) 경로 폴백
+            fonts_dir = resource_path("fonts")
         preferred_family = "Noto Sans KR"
         fallback_families = ["Noto Sans KR Medium", "Noto Sans KR Regular", "맑은 고딕", "Malgun Gothic", "Arial"]
         registered_paths = []
@@ -723,6 +726,9 @@ class UIMixin:
 
     def _show_priority_complete_popup(self, title, message, parent=None):
         image_path = os.path.join(get_user_data_dir(), "concept art", "길통이.JPG")
+        if not os.path.exists(image_path):
+            # 패키징 시 번들 내(_MEIPASS) 경로 폴백
+            image_path = resource_path(os.path.join("concept art", "길통이.JPG"))
         if not _PDF_LIBS_AVAILABLE or not os.path.exists(image_path):
             self._show_info(title, message)
             return
@@ -916,14 +922,22 @@ class UIMixin:
                       text_color="#FFFFFF", width=172, height=36, corner_radius=10,
                       font=(self.font_family, 14, "bold")).pack(side="left", padx=3, pady=8)
 
+        # 화면 크기 설정 버튼 (우측 끝)
+        self._create_button(nav_bar, text="⚙ 화면 크기",
+                      command=self.on_display_settings,
+                      width=110, **nav_btn_kwargs).pack(side="right", padx=(3, 12), pady=8)
+
         # 메인 컨텐츠 영역
         content = ctk.CTkFrame(root, fg_color="transparent")
         content.pack(fill="both", expand=True)
 
-        # 좌측 컨트롤 패널
-        left = ctk.CTkFrame(content, width=374, corner_radius=0, fg_color=APP_BG)
-        left.pack(side="left", fill="y", padx=15, pady=15)
-        left.pack_propagate(False)
+        # 좌측 컨트롤 패널 (스크롤 가능 - 창 크기가 작아도 범례가 잘리지 않음)
+        left_outer = ctk.CTkFrame(content, width=390, corner_radius=0, fg_color=APP_BG)
+        left_outer.pack(side="left", fill="y", padx=15, pady=15)
+        left_outer.pack_propagate(False)
+        left = ctk.CTkScrollableFrame(left_outer, fg_color=APP_BG, scrollbar_button_color="#C8D7EA",
+                                      scrollbar_button_hover_color="#9FB8D8")
+        left.pack(fill="both", expand=True)
 
         # 우측 콘텐츠 영역
         right = ctk.CTkFrame(content, fg_color="transparent")
@@ -1075,16 +1089,18 @@ class UIMixin:
         mode_frame.grid(row=1, column=1, columnspan=3, sticky="w", pady=WIDGET_PAD_Y, padx=(10, 0))
 
         def on_view_mode_change():
-            # '이력' 모드일 때는 HPCI/DI 체크박스 해제
+            # '이력' 모드일 때는 포장상태 체크박스 해제
             if self.view_mode.get() == "기본":
                 self.view_aar.set(False)
                 self.view_hpci.set(False)
                 self.view_di.set(False)
+                self.view_rd.set(False)
+                self.view_iri.set(False)
             self.draw_schematic()
 
         def on_condition_view_change():
-            # HPCI 또는 DI가 선택되면 보기 모드를 'CONDITION'으로 강제 변경
-            if self.view_hpci.get() or self.view_di.get() or self.view_aar.get():
+            # 포장상태 항목이 선택되면 보기 모드를 'CONDITION'으로 강제 변경
+            if self.view_hpci.get() or self.view_di.get() or self.view_aar.get() or self.view_rd.get() or self.view_iri.get():
                 self.view_mode.set("CONDITION")
             self.draw_schematic()
 
@@ -1096,6 +1112,8 @@ class UIMixin:
         condition_menu.add_checkbutton(label="HPCI", variable=self.view_hpci, command=on_condition_view_change)
         condition_menu.add_checkbutton(label="DI", variable=self.view_di, command=on_condition_view_change)
         condition_menu.add_checkbutton(label="AAR등급", variable=self.view_aar, command=on_condition_view_change)
+        condition_menu.add_checkbutton(label="RD", variable=self.view_rd, command=on_condition_view_change)
+        condition_menu.add_checkbutton(label="IRI", variable=self.view_iri, command=on_condition_view_change)
         condition_menubutton.configure(command=lambda: self._show_menu_below_widget(condition_menubutton, condition_menu))
         condition_menubutton.pack(side="left")
 
@@ -1125,7 +1143,7 @@ class UIMixin:
 
         # 범례: 좌측 파일 카드 아래로 이동 및 공법 추가 기능
         self.legend_frame = ctk.CTkFrame(left, fg_color=CARD_COLOR, corner_radius=CARD_RADIUS)
-        self.legend_frame.pack(fill="both", expand=True)
+        self.legend_frame.pack(fill="x", pady=(0, 8))
         create_header(self.legend_frame, "범례")
 
         controls = ctk.CTkFrame(self.legend_frame, fg_color="transparent")
@@ -1138,10 +1156,10 @@ class UIMixin:
                       border_width=BTN_GHOST_BORDER_WIDTH, border_color=BTN_GHOST_BORDER).pack(side="left", padx=(6, 0))
 
         legend_container = ctk.CTkFrame(self.legend_frame, fg_color="transparent")
-        legend_container.pack(fill="both", expand=True, padx=PAD_X, pady=5)
-        
-        self.legend_list = ctk.CTkScrollableFrame(legend_container, fg_color="transparent")
-        self.legend_list.pack(fill="both", expand=True)
+        legend_container.pack(fill="x", padx=PAD_X, pady=5)
+
+        self.legend_list = ctk.CTkScrollableFrame(legend_container, fg_color="transparent", height=160)
+        self.legend_list.pack(fill="x")
 
         self.legend_hint_lbl = ctk.CTkLabel(
             self.legend_frame, text="얇은 가로선은 차로 구분, 세로 점선은 100m",

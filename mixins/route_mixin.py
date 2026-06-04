@@ -69,7 +69,7 @@ class RouteMixin:
         canvas_frame = ctk.CTkFrame(tab, fg_color="#FFFFFF", corner_radius=16,
                                     border_width=1, border_color=CARD_BORDER)
         canvas_frame.pack(fill="both", expand=True, pady=(6,0), padx=8)
-        canvas = tk.Canvas(canvas_frame, bg="white", height=360)
+        canvas = tk.Canvas(canvas_frame, bg="white", height=CANVAS_WIDGET_H)
         hbar = ctk.CTkScrollbar(canvas_frame, orientation="horizontal", command=canvas.xview)
         canvas.configure(xscrollcommand=hbar.set)
         canvas.pack(fill="both", expand=True)
@@ -95,7 +95,7 @@ class RouteMixin:
                                            border_width=1, border_color=CARD_BORDER)
         detail_canvas_frame.pack(fill="both", expand=True)
         detail_canvas = tk.Canvas(detail_canvas_frame, bg=BACKGROUND_FILL,
-                                  height=205, highlightthickness=0)
+                                  height=DETAIL_CANVAS_H, highlightthickness=0)
         detail_hbar = ctk.CTkScrollbar(detail_canvas_frame, orientation="horizontal",
                                        command=detail_canvas.xview)
         detail_canvas.configure(xscrollcommand=detail_hbar.set)
@@ -456,6 +456,8 @@ class RouteMixin:
             bool(self.view_hpci.get()),
             bool(self.view_di.get()),
             bool(self.view_aar.get()),
+            bool(self.view_rd.get()),
+            bool(self.view_iri.get()),
             str(self.view_mode.get()),
         )
 

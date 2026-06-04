@@ -51,6 +51,152 @@ RAMP_LANE_GAP_Y = 6       # 램프 내부 차로 바 사이 수직 간격(px)
 DIRECTIONS = ["상행", "하행"]
 LANES = ["전차로", "1차로", "2차로", "3차로", "4차로"]  # 필요 시 갯수 늘려 사용
 
+# -------------------- 캔버스 레이아웃 (scale 1.0 기준) --------------------
+CANVAS_WIDGET_H       = 360   # 모식도 캔버스 위젯 높이 (px)
+DETAIL_CANVAS_H       = 205   # 돋보기 상세 캔버스 위젯 높이 (px)
+CANVAS_BAR_H          = 110   # 방향 바 높이 (px)
+CANVAS_TOP_MARGIN     = 60    # 모식도 상단 여백 (px)
+CANVAS_DIR_GAP        = 20    # 상행/하행 바 사이 간격 (px)
+CANVAS_KM_LBL_OFFSET  = 16    # km 눈금 라벨의 바 외곽 여백 (px)
+CANVAS_DIR_LBL_OFFSET = 36    # 방향 라벨의 바 외곽 여백 (px)
+CANVAS_IC_CHAR_H      = 16    # IC 세로 텍스트 문자 높이 (px)
+
+# 캔버스 폰트 크기 (캔버스 tk.Canvas용)
+CANVAS_FONT_XS  = 7
+CANVAS_FONT_S   = 8
+CANVAS_FONT_M   = 9
+CANVAS_FONT_L   = 10
+CANVAS_FONT_XL  = 11
+
+# 현재 적용된 디스플레이 스케일 (apply_display_scale 호출 시 갱신)
+DISPLAY_SCALE = 1.0
+
+# ---- 스케일 기준값 (apply_display_scale 에서 참조) ----
+_BASE_PX_PER_KM          = 160
+_BASE_CANVAS_WIDGET_H    = 360
+_BASE_DETAIL_CANVAS_H    = 205
+_BASE_RAMP_BAR_W         = 520
+_BASE_RAMP_BAR_H         = 22
+_BASE_RAMP_BAR_GAP_Y     = 36
+_BASE_RAMP_PX_PER_KM     = 100
+_BASE_RAMP_LANE_GAP_Y    = 6
+_BASE_IC_BOX_W           = 40
+_BASE_IC_GAP_MARGIN      = 14
+_BASE_CANVAS_BAR_H       = 110
+_BASE_CANVAS_TOP_MARGIN  = 60
+_BASE_CANVAS_DIR_GAP     = 20
+_BASE_CANVAS_KM_LBL_OFF  = 16
+_BASE_CANVAS_DIR_LBL_OFF = 36
+_BASE_CANVAS_IC_CHAR_H   = 16
+_BASE_CANVAS_FONT_XS     = 7
+_BASE_CANVAS_FONT_S      = 8
+_BASE_CANVAS_FONT_M      = 9
+_BASE_CANVAS_FONT_L      = 10
+_BASE_CANVAS_FONT_XL     = 11
+
+
+def apply_display_scale(scale: float) -> None:
+    """캔버스·레이아웃 상수를 디스플레이 스케일에 맞게 일괄 조정.
+    constants 모듈 로드 시 자동 호출 → 다른 모듈이 'from constants import *' 로
+    가져올 때 이미 스케일된 값을 얻는다.
+    """
+    global PX_PER_KM, RAMP_BAR_W, RAMP_BAR_H, RAMP_BAR_GAP_Y
+    global RAMP_PX_PER_KM, RAMP_LANE_GAP_Y, IC_BOX_W, IC_GAP_MARGIN
+    global CANVAS_BAR_H, CANVAS_TOP_MARGIN, CANVAS_DIR_GAP
+    global CANVAS_KM_LBL_OFFSET, CANVAS_DIR_LBL_OFFSET, CANVAS_IC_CHAR_H
+    global CANVAS_FONT_XS, CANVAS_FONT_S, CANVAS_FONT_M, CANVAS_FONT_L, CANVAS_FONT_XL
+    global CANVAS_WIDGET_H, DETAIL_CANVAS_H, DISPLAY_SCALE
+
+    s = max(0.5, min(2.0, float(scale)))
+    DISPLAY_SCALE = s
+
+    PX_PER_KM             = max(60,  int(_BASE_PX_PER_KM * s))
+    CANVAS_WIDGET_H       = max(220, int(_BASE_CANVAS_WIDGET_H * s))
+    DETAIL_CANVAS_H       = max(120, int(_BASE_DETAIL_CANVAS_H * s))
+    RAMP_BAR_W            = max(200, int(_BASE_RAMP_BAR_W * s))
+    RAMP_BAR_H            = max(10,  int(_BASE_RAMP_BAR_H * s))
+    RAMP_BAR_GAP_Y        = max(15,  int(_BASE_RAMP_BAR_GAP_Y * s))
+    RAMP_PX_PER_KM        = max(40,  int(_BASE_RAMP_PX_PER_KM * s))
+    RAMP_LANE_GAP_Y       = max(3,   int(_BASE_RAMP_LANE_GAP_Y * s))
+    IC_BOX_W              = max(20,  int(_BASE_IC_BOX_W * s))
+    IC_GAP_MARGIN         = max(6,   int(_BASE_IC_GAP_MARGIN * s))
+    CANVAS_BAR_H          = max(50,  int(_BASE_CANVAS_BAR_H * s))
+    CANVAS_TOP_MARGIN     = max(30,  int(_BASE_CANVAS_TOP_MARGIN * s))
+    CANVAS_DIR_GAP        = max(10,  int(_BASE_CANVAS_DIR_GAP * s))
+    CANVAS_KM_LBL_OFFSET  = max(8,   int(_BASE_CANVAS_KM_LBL_OFF * s))
+    CANVAS_DIR_LBL_OFFSET = max(18,  int(_BASE_CANVAS_DIR_LBL_OFF * s))
+    CANVAS_IC_CHAR_H      = max(10,  int(_BASE_CANVAS_IC_CHAR_H * s))
+    CANVAS_FONT_XS        = max(6,   int(_BASE_CANVAS_FONT_XS * s))
+    CANVAS_FONT_S         = max(6,   int(_BASE_CANVAS_FONT_S * s))
+    CANVAS_FONT_M         = max(7,   int(_BASE_CANVAS_FONT_M * s))
+    CANVAS_FONT_L         = max(8,   int(_BASE_CANVAS_FONT_L * s))
+    CANVAS_FONT_XL        = max(9,   int(_BASE_CANVAS_FONT_XL * s))
+
+
+def _detect_auto_scale() -> float:
+    """모니터 해상도로 기본 스케일을 자동 결정.
+    window_mixin._auto_detect_scale 가 이 결과(DISPLAY_SCALE)를 그대로 사용하므로
+    위젯 스케일과 캔버스(모식도) 스케일이 항상 일치한다.
+    """
+    try:
+        import ctypes as _ct
+        # ctk가 나중에 호출하는 것과 동일한 DPI 인식 활성화 → 물리 해상도 기준 측정
+        try:
+            _ct.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:
+                _ct.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+        sw = int(_ct.windll.user32.GetSystemMetrics(0))
+    except Exception:
+        return 1.0
+    if sw >= 2560:
+        return 1.1
+    elif sw >= 1920:
+        return 1.0
+    elif sw >= 1600:
+        return 0.9
+    elif sw >= 1366:
+        return 0.85
+    else:
+        return 0.75
+
+
+def _init_display_scale_from_file() -> None:
+    """앱 시작 시 display_settings.json 을 읽어 캔버스 상수를 자동 조정.
+    constants 모듈이 처음 임포트될 때 실행되어, 이후 'from constants import *'
+    하는 모든 모듈이 스케일된 값을 사용한다.
+    파일이 없거나 'auto'면 모니터 해상도를 자동 감지해 적용한다.
+    """
+    scale = None
+    try:
+        import os as _os, json as _json, sys as _sys
+        if getattr(_sys, 'frozen', False):
+            base = _os.path.dirname(_sys.executable)
+        else:
+            base = _os.path.dirname(_os.path.abspath(__file__))
+        path = _os.path.join(base, "display_settings.json")
+        if _os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as _f:
+                data = _json.load(_f)
+            val = data.get("scale")
+            if val and val != "auto":
+                v = float(val)
+                if 0.5 <= v <= 2.0:
+                    scale = v
+    except Exception:
+        pass
+    if scale is None:
+        scale = _detect_auto_scale()
+    try:
+        apply_display_scale(scale)
+    except Exception:
+        pass
+
+
+_init_display_scale_from_file()
+
 # -------------------- 라이트 테마 --------------------
 APP_BG = "#EEF4FB"
 SURFACE_BG = "#F7FAFC"

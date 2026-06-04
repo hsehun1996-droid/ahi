@@ -83,6 +83,13 @@ class MaintenanceApp(
         # 디자인 스타일 설정 적용
         self._setup_modern_style()
 
+        # 화면 해상도에 맞게 UI 스케일 적용 (_build_ui 전에 반드시 호출)
+        try:
+            self._apply_display_scaling()
+        except Exception:
+            self._current_display_scale = 1.0
+            log_exception("화면 스케일 초기화 실패")
+
         # 앱 아이콘 설정 (고속도로 모티프). 외부 아이콘 파일이 있으면 우선 사용
         try:
             self._set_app_icon()
@@ -148,6 +155,8 @@ class MaintenanceApp(
         self.view_hpci = tk.BooleanVar(value=False)
         self.view_di = tk.BooleanVar(value=False)
         self.view_aar = tk.BooleanVar(value=False)
+        self.view_rd = tk.BooleanVar(value=False)
+        self.view_iri = tk.BooleanVar(value=False)
 
         self._build_ui()
         self.draw_schematic()

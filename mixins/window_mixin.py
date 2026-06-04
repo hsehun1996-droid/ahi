@@ -111,17 +111,206 @@ class WindowMixin:
         self._create_button(btn_frame, text="취소", command=do_cancel, width=70, 
                       fg_color="#718096", hover_color="#4A5568").pack(side="left", padx=5)
 
+    # ---------- 화면 크기(스케일) 설정 ----------
+
+    def _get_display_settings_path(self):
+        return os.path.join(get_user_data_dir(), "display_settings.json")
+
+    def _auto_detect_scale(self):
+        """화면 해상도에 따라 UI 스케일을 자동 결정.
+        constants 모듈이 시작 시 감지·적용한 값(DISPLAY_SCALE)을 그대로 사용해
+        위젯 스케일과 캔버스(모식도) 스케일이 항상 일치하도록 한다.
+        """
+        try:
+            import constants
+            return float(constants.DISPLAY_SCALE)
+        except Exception:
+            return 1.0
+
+    def _load_display_scale(self):
+        """저장된 스케일 설정을 불러오거나 자동 감지."""
+        path = self._get_display_settings_path()
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                val = data.get("scale", "auto")
+                if val == "auto" or val is None:
+                    return self._auto_detect_scale()
+                scale = float(val)
+                if 0.5 <= scale <= 2.0:
+                    return scale
+        except Exception:
+            pass
+        return self._auto_detect_scale()
+
+    def _save_display_scale(self, scale):
+        path = self._get_display_settings_path()
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"scale": scale}, f, ensure_ascii=False)
+        except Exception:
+            log_exception("화면 설정 저장 실패")
+
+    def _apply_display_scaling(self):
+        """CTkinter 위젯·창 스케일 적용 (UI 빌드 전에 호출해야 함)."""
+        try:
+            scale = self._load_display_scale()
+            ctk.set_widget_scaling(scale)
+            ctk.set_window_scaling(scale)
+            self._current_display_scale = scale
+        except Exception:
+            self._current_display_scale = 1.0
+            log_exception("화면 스케일 적용 실패")
+
     def set_initial_window_size(self):
         try:
             sw = self.winfo_screenwidth()
             sh = self.winfo_screenheight()
-            target_w = max(1400, int(sw * 0.85))
-            target_h = max(800, int(sh * 0.85))
+            scale = getattr(self, '_current_display_scale', 1.0)
+
+            # 저장된 해상도 프리셋이 있으면 우선 사용
+            saved_w, saved_h = 0, 0
+            try:
+                path = self._get_display_settings_path()
+                if os.path.exists(path):
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    saved_w = int(data.get("win_w", 0))
+                    saved_h = int(data.get("win_h", 0))
+            except Exception:
+                pass
+
+            if saved_w > 0 and saved_h > 0:
+                target_w = min(saved_w, sw - 20)
+                target_h = min(saved_h, sh - 60)
+            else:
+                # 스케일 반영 기본 크기
+                base_w = int(1400 * scale)
+                base_h = int(850 * scale)
+                target_w = min(base_w, sw - 20)
+                target_h = min(base_h, sh - 60)
+
+            # 절대 최소값
+            target_w = max(target_w, 800)
+            target_h = max(target_h, 540)
             x = (sw - target_w) // 2
-            y = (sh - target_h) // 2
+            y = max(0, (sh - target_h) // 2)
             self.geometry(f"{target_w}x{target_h}+{x}+{y}")
         except Exception:
             pass
+
+    def on_display_settings(self):
+        """화면 크기(해상도) 설정 다이얼로그 - 게임처럼 해상도 프리셋 선택."""
+        dlg = self._create_popup_window(self)
+        dlg.title("")
+        w, h = 420, 420
+        x = self.winfo_x() + (self.winfo_width() // 2) - (w // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (h // 2)
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
+        dlg.resizable(False, False)
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.focus_force()
+
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        cur_w = self.winfo_width()
+        cur_h = self.winfo_height()
+
+        ctk.CTkLabel(dlg, text="화면 크기(해상도) 설정",
+                     font=(self.font_family, 15, "bold")).pack(pady=(18, 2))
+        ctk.CTkLabel(dlg, text=f"모니터 해상도: {sw}×{sh}  /  현재 창: {cur_w}×{cur_h}",
+                     font=(self.font_family, 11), text_color="#718096").pack()
+        ctk.CTkLabel(dlg, text="적용 시 프로그램이 재시작되어 모든 요소가 비율에 맞게 조정됩니다.",
+                     font=(self.font_family, 11), text_color="#718096").pack(pady=(0, 8))
+
+        # 해상도 프리셋 (너비, 높이, 설명, 기준 스케일)
+        PRESETS = [
+            (0,    0,    f"자동 감지  ({sw}×{sh})",         None),
+            (1280, 720,  "소형  1280 × 720",                 0.80),
+            (1366, 768,  "소형+  1366 × 768",                0.85),
+            (1600, 900,  "중형  1600 × 900",                 0.90),
+            (1920, 1080, "대형  1920 × 1080",                1.00),
+            (2560, 1440, "초대형  2560 × 1440",              1.15),
+        ]
+
+        # 현재 저장된 설정에서 선택 항목 결정
+        saved_w, saved_h = 0, 0
+        try:
+            path = self._get_display_settings_path()
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                saved_w = int(data.get("win_w", 0))
+                saved_h = int(data.get("win_h", 0))
+        except Exception:
+            pass
+
+        # 현재 창 크기로 초기 선택 결정
+        init_key = (saved_w, saved_h)
+        if init_key not in [(p[0], p[1]) for p in PRESETS]:
+            init_key = (0, 0)
+        selected = tk.StringVar(value=f"{init_key[0]}x{init_key[1]}")
+
+        radio_frame = ctk.CTkFrame(dlg, fg_color="transparent")
+        radio_frame.pack(fill="x", padx=30, pady=4)
+
+        for pw, ph, label, _ in PRESETS:
+            # 모니터보다 큰 해상도는 비활성화
+            is_too_big = (pw > sw or ph > sh) if pw > 0 else False
+            rb = ctk.CTkRadioButton(
+                radio_frame,
+                text=label,
+                variable=selected,
+                value=f"{pw}x{ph}",
+                font=(self.font_family, 12),
+                state="disabled" if is_too_big else "normal",
+                text_color="#B0BEC5" if is_too_big else None,
+            )
+            rb.pack(anchor="w", pady=4)
+
+        def do_apply():
+            import subprocess
+            val = selected.get()
+            pw, ph = (int(v) for v in val.split("x"))
+
+            # 스케일 결정
+            if pw == 0:
+                scale = self._auto_detect_scale()
+            else:
+                scale = next((s for (w2, h2, _, s) in PRESETS if w2 == pw and h2 == ph), 1.0)
+                if scale is None:
+                    scale = self._auto_detect_scale()
+
+            # 설정 저장
+            try:
+                path = self._get_display_settings_path()
+                save_val = "auto" if pw == 0 else scale
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump({"scale": save_val, "win_w": pw, "win_h": ph}, f, ensure_ascii=False)
+            except Exception:
+                log_exception("화면 설정 저장 실패")
+
+            dlg.destroy()
+
+            # 앱 재시작: 새 프로세스를 띄우고 현재 창을 닫는다
+            # → constants.py 로드 시 스케일된 캔버스 상수 + CTk 위젯 스케일 모두 적용됨
+            try:
+                if getattr(sys, 'frozen', False):
+                    subprocess.Popen([sys.executable])
+                else:
+                    subprocess.Popen([sys.executable] + sys.argv)
+            except Exception:
+                log_exception("앱 재시작 실패")
+            self.destroy()
+
+        bottom = ctk.CTkFrame(dlg, fg_color="transparent")
+        bottom.pack(side="bottom", pady=14)
+        self._create_button(bottom, text="적용", command=do_apply, width=90,
+                            fg_color="#3182CE", hover_color="#2B6CB0").pack(side="left", padx=6)
+        self._create_button(bottom, text="취소", command=dlg.destroy, width=90,
+                            fg_color="#718096", hover_color="#4A5568").pack(side="left", padx=6)
 
     # ---------- Undo (Ctrl+Z) ----------
 

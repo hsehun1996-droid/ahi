@@ -509,12 +509,16 @@ class IOMixin:
         try:
             from PIL import EpsImagePlugin
             if getattr(sys, 'frozen', False):
-                base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+                # 번들 내(_MEIPASS) 우선, 없으면 exe 옆 폴더도 확인
+                base_dirs = [getattr(sys, '_MEIPASS', ''), os.path.dirname(sys.executable)]
             else:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-            gs_path = os.path.join(base_dir, "ghostscript", "bin", "gswin64c.exe")
-            if os.path.exists(gs_path):
-                EpsImagePlugin.gs_windows_binary = gs_path
+                # 개발 모드: mixins/의 상위 = 프로젝트 루트
+                base_dirs = [os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
+            for base_dir in base_dirs:
+                gs_path = os.path.join(base_dir, "ghostscript", "bin", "gswin64c.exe")
+                if base_dir and os.path.exists(gs_path):
+                    EpsImagePlugin.gs_windows_binary = gs_path
+                    break
         except Exception:
             pass
 
@@ -530,6 +534,8 @@ class IOMixin:
             view_hpci = self.view_hpci.get()
             view_di = self.view_di.get()
             view_aar = self.view_aar.get()
+            view_rd = self.view_rd.get()
+            view_iri = self.view_iri.get()
 
             # --- 폰트 설정 (문서 시작 시 한 번만) ---
             # 한글 폰트 등록을 시도하고 성공 여부를 플래그로 관리합니다.
@@ -599,7 +605,7 @@ class IOMixin:
                 temp_canvas.update()
 
                 # 상단 세그먼트 이미지 생성
-                self.draw_schematic_for_pdf(temp_canvas, route, start1, end1, page_width, view_mode, r_start, r_end, view_hpci, view_di, view_aar, structure_labels_to_draw, segment_index=0)
+                self.draw_schematic_for_pdf(temp_canvas, route, start1, end1, page_width, view_mode, r_start, r_end, view_hpci, view_di, view_aar, structure_labels_to_draw, segment_index=0, view_rd=view_rd, view_iri=view_iri)
                 temp_canvas.update() # 그리기가 완료되도록 다시 업데이트
 
                 # region을 지정하여 PS 픽셀과 캔버스 픽셀이 정확히 1:scale 매핑되게 한다
@@ -643,7 +649,7 @@ class IOMixin:
                 seg1_crop_bbox = (0, 0, 1, 1)
                 if end2 > start2:
                     temp_canvas.delete("all")
-                    self.draw_schematic_for_pdf(temp_canvas, route, start2, end2, page_width, view_mode, r_start, r_end, view_hpci, view_di, view_aar, structure_labels_to_draw, segment_index=1)
+                    self.draw_schematic_for_pdf(temp_canvas, route, start2, end2, page_width, view_mode, r_start, r_end, view_hpci, view_di, view_aar, structure_labels_to_draw, segment_index=1, view_rd=view_rd, view_iri=view_iri)
                     temp_canvas.update() # 그리기가 완료되도록 다시 업데이트
 
                     _seg1_cw = next((l['canvas_w'] for l in structure_labels_to_draw if l.get('segment') == 1 and 'canvas_w' in l), int(page_width))

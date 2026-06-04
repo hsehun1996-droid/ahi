@@ -1,7 +1,16 @@
 __pycache__/
 *.pyc
-*.spec
 highway.log
 startup_error.log
 project1.zip
 gs10060w64.exe
+
+# PyInstaller 빌드 산출물 (highway.spec은 빌드 설정이므로 커밋)
+build/
+dist/
+
+# PC별 화면 설정 (커밋 제외)
+display_settings.json
+
+# ghostscript 폴더에 잘못 저장된 세이브 파일
+ghostscript/all_*.csv
