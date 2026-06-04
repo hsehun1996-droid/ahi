@@ -530,18 +530,27 @@ class CanvasMixin:
         route["_fit_last_w"] = raw_canvas_w
 
         total_w = avail_w
-        total_h = int(canvas.winfo_height()) or CANVAS_WIDGET_H
 
-        # 레이아웃 (display scale에 따라 constants.py에서 자동 조정)
-        top_margin = CANVAS_TOP_MARGIN
-        bar_h      = CANVAS_BAR_H
-        dir_gap    = CANVAS_DIR_GAP
-        bar1_top = top_margin
-        bar2_top = bar1_top + bar_h + dir_gap
+        # 레이아웃: 캔버스(창) 높이에 맞춰 바 높이를 자동 조정(세로 반응형)
+        # 위쪽 km/방향 라벨 여백 + 바 2개 + 중앙 간격 + 아래 라벨 여백이 캔버스 높이에 들어가도록.
+        top_margin     = CANVAS_TOP_MARGIN
+        dir_gap        = CANVAS_DIR_GAP
+        bottom_reserve = CANVAS_KM_LBL_OFFSET + CANVAS_DIR_LBL_OFFSET + 10  # 라벨 글자 높이 여유
+        avail_h = int(canvas.winfo_height())
+        if avail_h < 80:
+            avail_h = CANVAS_WIDGET_H  # 최초 렌더(창 미배치) 임시값
+        bar_h = (avail_h - top_margin - dir_gap - bottom_reserve) / 2.0
+        bar_h = max(24, min(bar_h, CANVAS_BAR_H))  # 너무 작거나 설계값(스케일 반영)보다 크지 않게
+        # 모식도 전체를 캔버스 높이 중앙에 배치(위/아래 여백 균등)
+        content_h = top_margin + bar_h * 2 + dir_gap + bottom_reserve
+        extra = max(0, avail_h - content_h)
+        bar1_top   = top_margin + extra / 2.0
+        bar2_top   = bar1_top + bar_h + dir_gap
         bar_bottom = bar2_top + bar_h
+        route["_fit_last_h"] = avail_h
 
-        # 캔버스 스크롤영역
-        canvas.config(scrollregion=(0, 0, total_w, max(total_h, bar_bottom + 80)))
+        # 캔버스 스크롤영역 (세로는 캔버스 높이에 맞춤 → 세로 스크롤 없음)
+        canvas.config(scrollregion=(0, 0, total_w, max(avail_h, bar_bottom + 10)))
 
         # km→px 매핑(갭을 실제 길이로 반영: 갭 위치 이후를 오른쪽으로 밀어냄)
         km_marks = [km for km, _ in ic_list]
@@ -625,7 +634,7 @@ class CanvasMixin:
         # 방향 라벨 (스크롤해도 고정 위치 유지)
         dir_lbl1 = canvas.create_text(24, bar1_top - CANVAS_DIR_LBL_OFFSET, anchor="w", text=f"{route['directions'][0]}", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_L, "bold"), tags="dir_label")
         dir_lbl2 = canvas.create_text(24, bar2_top + bar_h + CANVAS_DIR_LBL_OFFSET, anchor="w", text=f"{route['directions'][1]}", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_L, "bold"), tags="dir_label")
-        _dir_label_ys = (bar1_top - 36, bar2_top + bar_h + 36)
+        _dir_label_ys = (bar1_top - CANVAS_DIR_LBL_OFFSET, bar2_top + bar_h + CANVAS_DIR_LBL_OFFSET)
         _dir_label_ids = (dir_lbl1, dir_lbl2)
 
         def _pin_dir_labels(*_args):
@@ -643,8 +652,9 @@ class CanvasMixin:
             except Exception:
                 return
             w = int(canvas.winfo_width())
-            if abs(w - route.get("_fit_last_w", 0)) <= 2:
-                return  # 너비 변화 없음 → 재그리기 불필요(무한 루프 방지)
+            h = int(canvas.winfo_height())
+            if abs(w - route.get("_fit_last_w", 0)) <= 2 and abs(h - route.get("_fit_last_h", 0)) <= 2:
+                return  # 크기 변화 없음 → 재그리기 불필요(무한 루프 방지)
             aid = route.get("_fit_redraw_after")
             if aid:
                 try:
