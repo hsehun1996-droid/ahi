@@ -1129,10 +1129,18 @@ class CanvasMixin:
                 text_color="#FFFFFF")
 
         DETAIL_GRID_KM = 0.01   # 10m
-        margin     = 30
-        bar_h      = 67
-        top_margin = 32
-        dir_gap    = 14
+        # 지사(상세) 모식도도 디스플레이 스케일에 맞춰 세로/여백을 줄여, 소형에서
+        # 상세 캔버스(DETAIL_CANVAS_H)를 넘어 아래가 잘리지 않도록 한다.
+        import constants as _C
+        _s = float(getattr(_C, "DISPLAY_SCALE", 1.0) or 1.0)
+        margin     = max(10, round(30 * _s))
+        bar_h      = max(24, round(67 * _s))
+        top_margin = max(14, round(32 * _s))
+        dir_gap    = max(6,  round(14 * _s))
+        lbl_off    = max(6,  round(12 * _s))   # km 라벨 바깥 여백
+        m_off      = max(5,  round(8  * _s))   # 50m 눈금 라벨 여백
+        fs_lbl     = max(6,  round(9  * _s))   # km 라벨 폰트
+        fs_small   = max(6,  round(7  * _s))   # 50m/연도 라벨 폰트
         bar1_top   = top_margin
         bar2_top   = bar1_top + bar_h + dir_gap
         bar_bottom = bar2_top + bar_h
@@ -1191,14 +1199,14 @@ class CanvasMixin:
                                               fill=GRID_100M, dash=(2, 4))
             if is_start or is_end:
                 lbl = f"{x:.0f}k"
-                detail_canvas.create_text(xx, bar1_top - 12, text=lbl,
-                                          fill=TEXT_COLOR, font=(self.font_family, 9, "bold"))
-                detail_canvas.create_text(xx, bar2_top + bar_h + 12, text=lbl,
-                                          fill=TEXT_COLOR, font=(self.font_family, 9, "bold"))
+                detail_canvas.create_text(xx, bar1_top - lbl_off, text=lbl,
+                                          fill=TEXT_COLOR, font=(self.font_family, fs_lbl, "bold"))
+                detail_canvas.create_text(xx, bar2_top + bar_h + lbl_off, text=lbl,
+                                          fill=TEXT_COLOR, font=(self.font_family, fs_lbl, "bold"))
             elif is_50m:
                 m = step_idx * 10
-                detail_canvas.create_text(xx, bar1_top - 8, text=str(m),
-                                          fill="#888888", font=(self.font_family, 7))
+                detail_canvas.create_text(xx, bar1_top - m_off, text=str(m),
+                                          fill="#888888", font=(self.font_family, fs_small))
             x = round(x + DETAIL_GRID_KM, 6)
             step_idx += 1
 
@@ -1245,7 +1253,7 @@ class CanvasMixin:
                     tc = "#FFFFFF"
                 detail_canvas.create_text(
                     (x1+x2)/2, (y1+y2)/2, text=f"'{year[2:]}",
-                    fill=tc, font=(self.font_family, 7), anchor="center",
+                    fill=tc, font=(self.font_family, fs_small), anchor="center",
                     tags=("branch_label",))
 
         if detail_hbar:
