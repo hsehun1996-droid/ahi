@@ -501,56 +501,19 @@ class CanvasMixin:
         ic_list = self._collect_ic_list(route, r_start, r_end)
         total_gaps_px = ic_gap_w * len(ic_list)
 
-        # ── 반응형: 모식도를 캔버스(창) 너비에 자동으로 맞춤 ─────────────────
-        # 가로 스크롤 없이 전체 노선이 한 화면에 들어오도록, 사용 가능한 너비에서
-        # 좌/우 여백과 IC 갭(고정폭)을 뺀 공간을 노선 길이로 나눠 px/km를 동적 계산.
-        # → 창을 줄이면 모식도 전체가 눈에 띄게 축소된다.
-        LEFT_MARGIN = 20
-        RIGHT_MARGIN = 60
-        canvas.update_idletasks()
-        raw_canvas_w = int(canvas.winfo_width())
-        avail_w = raw_canvas_w if raw_canvas_w >= 100 else 1200  # 최초 렌더(창 미배치) 임시값
-        inner_w = avail_w - LEFT_MARGIN - RIGHT_MARGIN  # km 구간 + IC 갭이 들어갈 공간
+        total_w = int(span_km * PX_PER_KM) + 80 + total_gaps_px  # 갭 폭만큼 우측 여백 확대
+        total_h = int(canvas.winfo_height()) or 360
 
-        # IC 갭은 고정폭이라 IC가 많으면 전체 너비를 잠식한다.
-        # 갭 합계가 가용 공간의 45%를 넘으면 갭(=IC 박스) 폭을 비례 축소해 노선이 항상 들어오게 함.
-        n_ic = len(ic_list)
-        if n_ic > 0:
-            max_gaps = inner_w * 0.45
-            if total_gaps_px > max_gaps:
-                ic_gap_w = max(16, int(max_gaps / n_ic))
-                total_gaps_px = ic_gap_w * n_ic
-        # IC 박스 좌우 여백/폭을 (조정된) 갭 폭에서 파생 (박스가 갭을 넘지 않도록)
-        ic_margin = min(IC_GAP_MARGIN, max(2, ic_gap_w // 6))
-        ic_box_w = max(8, ic_gap_w - ic_margin * 2)
-
-        usable_w = inner_w - total_gaps_px
-        px_per_km = max(2.0, usable_w / span_km)  # 최소 밀도 보장(0 division 방지)
-        # 리사이즈 시 재계산 비교 기준 너비 저장
-        route["_fit_last_w"] = raw_canvas_w
-
-        total_w = avail_w
-
-        # 레이아웃: 캔버스(창) 높이에 맞춰 바 높이를 자동 조정(세로 반응형)
-        # 위쪽 km/방향 라벨 여백 + 바 2개 + 중앙 간격 + 아래 라벨 여백이 캔버스 높이에 들어가도록.
-        top_margin     = CANVAS_TOP_MARGIN
-        dir_gap        = CANVAS_DIR_GAP
-        bottom_reserve = CANVAS_KM_LBL_OFFSET + CANVAS_DIR_LBL_OFFSET + 10  # 라벨 글자 높이 여유
-        avail_h = int(canvas.winfo_height())
-        if avail_h < 80:
-            avail_h = CANVAS_WIDGET_H  # 최초 렌더(창 미배치) 임시값
-        bar_h = (avail_h - top_margin - dir_gap - bottom_reserve) / 2.0
-        bar_h = max(24, min(bar_h, CANVAS_BAR_H))  # 너무 작거나 설계값(스케일 반영)보다 크지 않게
-        # 모식도 전체를 캔버스 높이 중앙에 배치(위/아래 여백 균등)
-        content_h = top_margin + bar_h * 2 + dir_gap + bottom_reserve
-        extra = max(0, avail_h - content_h)
-        bar1_top   = top_margin + extra / 2.0
-        bar2_top   = bar1_top + bar_h + dir_gap
+        # 레이아웃 (display scale에 따라 constants.py에서 자동 조정)
+        top_margin = CANVAS_TOP_MARGIN
+        bar_h      = CANVAS_BAR_H
+        dir_gap    = CANVAS_DIR_GAP
+        bar1_top = top_margin
+        bar2_top = bar1_top + bar_h + dir_gap
         bar_bottom = bar2_top + bar_h
-        route["_fit_last_h"] = avail_h
 
-        # 캔버스 스크롤영역 (세로는 캔버스 높이에 맞춤 → 세로 스크롤 없음)
-        canvas.config(scrollregion=(0, 0, total_w, max(avail_h, bar_bottom + 10)))
+        # 캔버스 스크롤영역
+        canvas.config(scrollregion=(0, 0, total_w, max(total_h, bar_bottom + 80)))
 
         # km→px 매핑(갭을 실제 길이로 반영: 갭 위치 이후를 오른쪽으로 밀어냄)
         km_marks = [km for km, _ in ic_list]
@@ -562,13 +525,13 @@ class CanvasMixin:
             return cnt * ic_gap_w
 
         def x_of_km(km_value: float) -> int:
-            return int((km_value - r_start) * px_per_km) + 20 + offset_for(km_value)
+            return int((km_value - r_start) * PX_PER_KM) + 20 + offset_for(km_value)
 
         # 돋보기 역산을 위한 km 매핑 정보 저장
         route["_km_mapping"] = {
             "r_start": r_start, "r_end": r_end,
             "km_marks": list(km_marks), "ic_gap_w": ic_gap_w,
-            "px_per_km": px_per_km,
+            "px_per_km": PX_PER_KM,
         }
         # 강조 하이라이트 계산용 바 레이아웃 저장
         route["_bar_layout"] = {
@@ -590,35 +553,26 @@ class CanvasMixin:
             return False
 
         # 100m 그리드 위치 수집 (gap 구간은 생략)
-        # 반응형 축소로 100m 간격이 너무 촘촘하면(3px 미만) 점선이 뭉개지므로 생략
+        x = km_ceil_to_grid(r_start, GRID_KM)
         grid_positions = []
-        show_100m = (px_per_km * GRID_KM) >= 3.0
-        if show_100m:
-            x = km_ceil_to_grid(r_start, GRID_KM)
-            while x <= r_end + 1e-9:
-                xx = x_of_km(x)
-                if not in_gap(xx):
-                    grid_positions.append(xx)
-                x += GRID_KM
+        while x <= r_end + 1e-9:
+            xx = x_of_km(x)
+            if not in_gap(xx):
+                grid_positions.append(xx)
+            x += GRID_KM
 
         # 1km 눈금/라벨 (세로선은 바 내부만) + 위치 저장 (gap 내부는 생략)
-        # 축소 시 라벨/세로선이 겹치지 않도록 표시 간격을 동적으로 결정
         km_positions = []
-        km_label_step = max(1, int(math.ceil(30.0 / max(px_per_km, 1.0))))  # 라벨 표시 간격(km)
-        show_km_line = px_per_km >= 6.0  # 1km 세로선 매 km 표시 여부
         km_tick = math.ceil(r_start)  # 다음 정수 km
         while km_tick <= r_end + 1e-6:
             x = x_of_km(km_tick)
             if not in_gap(x):
-                show_lbl = (int(km_tick) % km_label_step == 0)
-                if show_km_line or show_lbl:
-                    # 위/아래 바 내부에만 진한 세로선 (검은 실선, 약간 두껍게)
-                    canvas.create_line(x, bar1_top, x, bar1_top + bar_h, fill=GRID_1KM_COLOR, width=2)
-                    canvas.create_line(x, bar2_top, x, bar2_top + bar_h, fill=GRID_1KM_COLOR, width=2)
-                    km_positions.append(x)
-                if show_lbl:
-                    canvas.create_text(x, bar1_top - CANVAS_KM_LBL_OFFSET, text=f"{km_tick:.0f}k", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_M))
-                    canvas.create_text(x, bar2_top + bar_h + CANVAS_KM_LBL_OFFSET, text=f"{km_tick:.0f}k", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_M))
+                # 위/아래 바 내부에만 진한 세로선 (검은 실선, 약간 두껍게)
+                canvas.create_line(x, bar1_top, x, bar1_top + bar_h, fill=GRID_1KM_COLOR, width=2)
+                canvas.create_line(x, bar2_top, x, bar2_top + bar_h, fill=GRID_1KM_COLOR, width=2)
+                canvas.create_text(x, bar1_top - CANVAS_KM_LBL_OFFSET, text=f"{km_tick:.0f}k", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_M))
+                canvas.create_text(x, bar2_top + bar_h + CANVAS_KM_LBL_OFFSET, text=f"{km_tick:.0f}k", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_M))
+                km_positions.append(x)
             km_tick += 1.0
 
         # 바탕 바 / 차로선 / 중분대 그리기
@@ -634,7 +588,7 @@ class CanvasMixin:
         # 방향 라벨 (스크롤해도 고정 위치 유지)
         dir_lbl1 = canvas.create_text(24, bar1_top - CANVAS_DIR_LBL_OFFSET, anchor="w", text=f"{route['directions'][0]}", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_L, "bold"), tags="dir_label")
         dir_lbl2 = canvas.create_text(24, bar2_top + bar_h + CANVAS_DIR_LBL_OFFSET, anchor="w", text=f"{route['directions'][1]}", fill=TEXT_COLOR, font=(self.font_family, CANVAS_FONT_L, "bold"), tags="dir_label")
-        _dir_label_ys = (bar1_top - CANVAS_DIR_LBL_OFFSET, bar2_top + bar_h + CANVAS_DIR_LBL_OFFSET)
+        _dir_label_ys = (bar1_top - 36, bar2_top + bar_h + 36)
         _dir_label_ids = (dir_lbl1, dir_lbl2)
 
         def _pin_dir_labels(*_args):
@@ -643,31 +597,10 @@ class CanvasMixin:
                 canvas.coords(lid, x, ly)
             canvas.tag_raise("dir_label")
 
-        def _on_canvas_configure(event=None):
-            _pin_dir_labels()
-            # 반응형: 캔버스(창) 너비가 바뀌면 현재 노선 모식도를 다시 그려 너비에 맞춤
-            try:
-                if route is not self.routes[self.current_route_index]:
-                    return
-            except Exception:
-                return
-            w = int(canvas.winfo_width())
-            h = int(canvas.winfo_height())
-            if abs(w - route.get("_fit_last_w", 0)) <= 2 and abs(h - route.get("_fit_last_h", 0)) <= 2:
-                return  # 크기 변화 없음 → 재그리기 불필요(무한 루프 방지)
-            aid = route.get("_fit_redraw_after")
-            if aid:
-                try:
-                    canvas.after_cancel(aid)
-                except Exception:
-                    pass
-            # 리사이즈 도중 과도한 재그리기를 막기 위해 디바운스
-            route["_fit_redraw_after"] = canvas.after(120, self.draw_schematic)
-
         hbar = route.get("hbar")
         if hbar:
             canvas.configure(xscrollcommand=lambda *a: (hbar.set(*a), _pin_dir_labels()))
-        canvas.bind("<Configure>", _on_canvas_configure)
+        canvas.bind("<Configure>", _pin_dir_labels)
 
         # IC 마커 및 패널(콜아웃) 그리기
         try:
@@ -682,11 +615,11 @@ class CanvasMixin:
                 last_ramp_bottom = bar2_top + bar_h
                 if km < r_start - 1e-6 or km > r_end + 1e-6:
                     continue
-                # x 좌표(갭 반영 매핑) - 박스 폭/여백은 반응형으로 조정된 값 사용
+                # x 좌표(갭 반영 매핑)
                 right_edge = x_of_km(km)
                 left_edge = right_edge - ic_gap_w
-                box_left = left_edge + ic_margin
-                box_right = right_edge - ic_margin
+                box_left = left_edge + IC_GAP_MARGIN
+                box_right = right_edge - IC_GAP_MARGIN
 
                 # 박스 자체 그리기
                 box_top = bar1_top
