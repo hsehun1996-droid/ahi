@@ -39,6 +39,9 @@ try:
 except ImportError:
     CTkMessagebox = None
 
+# 개별 파일을 직접 실행하거나 작업 폴더가 달라도 프로젝트 루트(상위 폴더)의
+# constants/utils 등을 찾을 수 있도록 sys.path 에 추가
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from constants import *
 from utils import (
     get_logger, log_exception, log_warning,

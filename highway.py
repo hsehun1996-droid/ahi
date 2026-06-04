@@ -48,6 +48,8 @@ try:
 except ImportError:
     CTkMessagebox = None
 
+# 작업 폴더가 달라도 같은 폴더의 constants/utils 등을 찾도록 프로젝트 루트를 sys.path 에 추가
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from constants import *
 from utils import (
     get_logger, log_exception, log_warning,
