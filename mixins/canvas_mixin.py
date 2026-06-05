@@ -550,6 +550,8 @@ class CanvasMixin:
             left_px = right_px - ic_gap_w
             gaps_px.append((max(20, left_px), min(total_w - 20, right_px)))
         gaps_px = _merge_gaps(sorted(gaps_px))
+        # 모식도 선택 모드 오버레이용으로 IC 갭 픽셀 범위 저장
+        route["_gaps_px"] = gaps_px
 
         def in_gap(xpx: int) -> bool:
             for a, b in gaps_px:
@@ -695,6 +697,14 @@ class CanvasMixin:
                 canvas.create_line(xx, bar2_top, xx, bar2_top + bar_h, fill=GRID_100M, dash=(2, 4))
         except Exception:
             log_exception(f"그리드 렌더링 실패: route={route.get('name', '')}")
+
+        # 모식도 선택 모드: 선택불가/선택됨 오버레이를 최상단에 그림
+        if getattr(self, "schematic_select_mode", False):
+            try:
+                self._draw_schematic_selection_overlay(route)
+            except Exception:
+                log_exception("모식도 선택 오버레이 렌더링 실패")
+
         route["_last_render_signature"] = self._route_render_signature(route)
     # ───────────────── 돋보기 모드 ─────────────────
 
@@ -830,6 +840,9 @@ class CanvasMixin:
 
     def toggle_magnifier_mode(self, event=None):
         """돋보기 모드 토글 (단축키 o). 텍스트 입력 위젯에 포커스 중이면 무시."""
+        # 모식도 선택 모드 중에는 돋보기 토글 무시 (마우스 바인딩 충돌 방지)
+        if getattr(self, "schematic_select_mode", False):
+            return
         try:
             focused = self.focus_get()
             if focused and focused.winfo_class() in ('Entry', 'Text', 'TEntry'):

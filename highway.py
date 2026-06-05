@@ -64,13 +64,13 @@ from canvas_utils import (
 )
 from mixins import (
     UIMixin, RouteMixin, ICMixin, AnalysisMixin,
-    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin,
+    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin, SelectMixin,
 )
 
 
 class MaintenanceApp(
     UIMixin, RouteMixin, ICMixin, AnalysisMixin,
-    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin,
+    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin, SelectMixin,
     ctk.CTk,
 ):
     def __init__(self):
@@ -162,6 +162,18 @@ class MaintenanceApp(
         self.operation_changes = []    # [{route,direction,lane,start,end,method,note,...}]
         self.business_plan_window = None
         self.operation_change_window = None
+
+        # 모식도 선택 모드 상태 (mixins/select_mixin.py)
+        self.schematic_select_mode = False
+        self.schematic_select_label = ""
+        self.schematic_select_callback = None
+        self.schematic_select_exclude = []
+        self.schematic_select_origin_window = None
+        self.schematic_selections = {}   # 노선명 → [{direction,lane,start,end}]
+        self._sel_drag = None
+        self._sel_panel = None
+        self._sel_count_lbl = None
+        self._sel_view_backup = None
 
         # 포장상태불량률 보기 옵션
         self.view_hpci = tk.BooleanVar(value=False)

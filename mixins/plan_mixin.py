@@ -245,10 +245,15 @@ class PlanMixin:
                             fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
                             text_color="#FFFFFF",
                             font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
+        self._create_button(top, text="모식도에서 선택",
+                            command=self._bp_open_schematic_select, width=150,
+                            fg_color="#2C5282", hover_color="#22436B",
+                            text_color="#FFFFFF",
+                            font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
 
         ctk.CTkLabel(
             dlg,
-            text="‘개량 우선순위 산정’으로 구간을 선택해 추가하고, 표에서 이정·방향·차로·공법을 "
+            text="‘개량 우선순위 산정’ 또는 ‘모식도에서 선택’으로 구간을 추가하고, 표에서 이정·방향·차로·공법을 "
                  "수정한 뒤 ‘사업계획 확정’을 누르세요. (셀 더블클릭 = 수정)",
             font=(self.font_family, 11), text_color="#5A6B82", anchor="w", justify="left",
         ).pack(fill="x", padx=16, pady=(0, 6))
@@ -295,6 +300,14 @@ class PlanMixin:
             apply_label="사업계획 적용",
             apply_callback=self._bp_apply_priority,
             default_year=self.plan_year,
+        )
+
+    def _bp_open_schematic_select(self):
+        """모식도에서 직접 사업대상 구간을 선택(우선순위 산정과 동일한 적용 경로)."""
+        self.begin_schematic_selection(
+            "사업대상",
+            self._bp_apply_priority,
+            origin_window=self.business_plan_window,
         )
 
     def _bp_apply_priority(self, items, plan_year):
@@ -433,6 +446,11 @@ class PlanMixin:
                             fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
                             text_color="#FFFFFF",
                             font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
+        self._create_button(top, text="모식도에서 선택",
+                            command=self._oc_open_schematic_select, width=150,
+                            fg_color="#2C5282", hover_color="#22436B",
+                            text_color="#FFFFFF",
+                            font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
         self._create_button(top, text="한글 내보내기",
                             command=self._oc_export_hwp, width=140,
                             fg_color="#2F855A", hover_color="#276749",
@@ -525,8 +543,8 @@ class PlanMixin:
                 "orig_end": round(float(item.get("end", 0)), 3),
             })
 
-    def _oc_open_priority(self):
-        # 후보에서 사업계획 지정 구간 제외
+    def _oc_build_exclude(self):
+        """운영계획변경 후보에서 제외할 구간(사업계획 지정 구간)."""
         exclude = [
             {"route": p.get("route"), "direction": p.get("direction"),
              "lane": p.get("lane"),
@@ -540,11 +558,23 @@ class PlanMixin:
              "end": float(p.get("end", 0))}
             for p in self.business_plan
         ]
+        return exclude
+
+    def _oc_open_priority(self):
         self.on_improvement_priority(
             apply_label="운영계획변경 적용",
             apply_callback=self._oc_apply_priority,
-            exclude_sections=exclude,
+            exclude_sections=self._oc_build_exclude(),
             default_year=self.plan_year,
+        )
+
+    def _oc_open_schematic_select(self):
+        """모식도에서 직접 운영계획변경 구간을 선택."""
+        self.begin_schematic_selection(
+            "운영계획변경",
+            self._oc_apply_priority,
+            exclude_sections=self._oc_build_exclude(),
+            origin_window=self.operation_change_window,
         )
 
     def _oc_apply_priority(self, items, plan_year):

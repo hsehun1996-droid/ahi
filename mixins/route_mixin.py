@@ -462,6 +462,7 @@ class RouteMixin:
             bool(self.view_rd.get()),
             bool(self.view_iri.get()),
             str(self.view_mode.get()),
+            bool(getattr(self, "schematic_select_mode", False)),
         )
 
     def _needs_route_redraw(self, route: dict) -> bool:
