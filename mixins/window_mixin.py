@@ -39,6 +39,9 @@ try:
 except ImportError:
     CTkMessagebox = None
 
+# 개별 파일을 직접 실행하거나 작업 폴더가 달라도 프로젝트 루트(상위 폴더)의
+# constants/utils 등을 찾을 수 있도록 sys.path 에 추가
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from constants import *
 from utils import (
     get_logger, log_exception, log_warning,
@@ -321,12 +324,24 @@ class WindowMixin:
     # ---------- Undo (Ctrl+Z) ----------
 
     # ---------- 자동 불러오기 ----------
+    def _load_plan_data_safe(self, base_dir):
+        """사업계획/운영계획변경 CSV를 안전하게 로드(없거나 실패해도 무시)."""
+        try:
+            self._load_business_plan(base_dir)
+        except Exception:
+            log_exception("사업계획 로드 실패")
+        try:
+            self._load_operation_changes(base_dir)
+        except Exception:
+            log_exception("운영계획변경 로드 실패")
+
     def auto_load_csvs_on_start(self):
         """실행 시 동일 폴더의 CSV 파일들을 자동으로 불러옵니다."""
         base_dir = get_user_data_dir()
 
         try:
             if self._load_from_sqlite_cache(base_dir):
+                self._load_plan_data_safe(base_dir)
                 return
         except Exception:
             log_exception("SQLite 캐시 로드 실패")
@@ -775,6 +790,9 @@ class WindowMixin:
                     grp["ramps"].append({"name": rp.get('name') or '', "km": rkm})
             # 현재 노선에서 그룹화된 IC/JCT 정보를 self.ics에 누적 추가
             self.ics.extend(list(grouped.values()))
+
+        # 사업계획/운영계획변경 데이터 로드 (계획 엔트리 주입 포함)
+        self._load_plan_data_safe(base_dir)
 
         # 새로 그리기 및 연도 목록 갱신
         for route in self.routes:

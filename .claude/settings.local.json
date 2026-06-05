@@ -6,7 +6,9 @@
       "Bash(git --version)",
       "Bash(gh --version)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(mkdir -p templates)",
+      "Bash(cp \"/root/.claude/uploads/5854f11b-087f-412e-8c4f-3a096b875d9d/a040aaa8-______.hwp\" templates/operation_plan_template.hwp)"
     ]
   }
 }

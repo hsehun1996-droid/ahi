@@ -39,6 +39,9 @@ try:
 except ImportError:
     CTkMessagebox = None
 
+# 개별 파일을 직접 실행하거나 작업 폴더가 달라도 프로젝트 루트(상위 폴더)의
+# constants/utils 등을 찾을 수 있도록 sys.path 에 추가
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from constants import *
 from utils import (
     get_logger, log_exception, log_warning,
@@ -154,7 +157,9 @@ class CanvasMixin:
                         tc = "#FFFFFF" if (rv*299 + gv*587 + bv*114) / 1000 < 140 else "#000000"
                     except Exception:
                         tc = "#FFFFFF"
-                    canvas.create_text((sx1+sx2)/2, (y1+y2)/2, text=f"'{year[2:]}",
+                    # 사업계획으로 확정된 구간은 연도 대신 '계획'으로 표기
+                    label_txt = "계획" if it.get("plan") else f"'{year[2:]}"
+                    canvas.create_text((sx1+sx2)/2, (y1+y2)/2, text=label_txt,
                                        fill=tc, font=(self.font_family, CANVAS_FONT_S), tags=("entry_label",))
                 if item_map is not None:
                     item_map[item_id] = idx
@@ -1126,10 +1131,18 @@ class CanvasMixin:
                 text_color="#FFFFFF")
 
         DETAIL_GRID_KM = 0.01   # 10m
-        margin     = 30
-        bar_h      = 67
-        top_margin = 32
-        dir_gap    = 14
+        # 지사(상세) 모식도도 디스플레이 스케일에 맞춰 세로/여백을 줄여, 소형에서
+        # 상세 캔버스(DETAIL_CANVAS_H)를 넘어 아래가 잘리지 않도록 한다.
+        import constants as _C
+        _s = float(getattr(_C, "DISPLAY_SCALE", 1.0) or 1.0)
+        margin     = max(10, round(30 * _s))
+        bar_h      = max(24, round(67 * _s))
+        top_margin = max(14, round(32 * _s))
+        dir_gap    = max(6,  round(14 * _s))
+        lbl_off    = max(6,  round(12 * _s))   # km 라벨 바깥 여백
+        m_off      = max(5,  round(8  * _s))   # 50m 눈금 라벨 여백
+        fs_lbl     = max(6,  round(9  * _s))   # km 라벨 폰트
+        fs_small   = max(6,  round(7  * _s))   # 50m/연도 라벨 폰트
         bar1_top   = top_margin
         bar2_top   = bar1_top + bar_h + dir_gap
         bar_bottom = bar2_top + bar_h
@@ -1188,14 +1201,14 @@ class CanvasMixin:
                                               fill=GRID_100M, dash=(2, 4))
             if is_start or is_end:
                 lbl = f"{x:.0f}k"
-                detail_canvas.create_text(xx, bar1_top - 12, text=lbl,
-                                          fill=TEXT_COLOR, font=(self.font_family, 9, "bold"))
-                detail_canvas.create_text(xx, bar2_top + bar_h + 12, text=lbl,
-                                          fill=TEXT_COLOR, font=(self.font_family, 9, "bold"))
+                detail_canvas.create_text(xx, bar1_top - lbl_off, text=lbl,
+                                          fill=TEXT_COLOR, font=(self.font_family, fs_lbl, "bold"))
+                detail_canvas.create_text(xx, bar2_top + bar_h + lbl_off, text=lbl,
+                                          fill=TEXT_COLOR, font=(self.font_family, fs_lbl, "bold"))
             elif is_50m:
                 m = step_idx * 10
-                detail_canvas.create_text(xx, bar1_top - 8, text=str(m),
-                                          fill="#888888", font=(self.font_family, 7))
+                detail_canvas.create_text(xx, bar1_top - m_off, text=str(m),
+                                          fill="#888888", font=(self.font_family, fs_small))
             x = round(x + DETAIL_GRID_KM, 6)
             step_idx += 1
 
@@ -1240,9 +1253,10 @@ class CanvasMixin:
                     tc = "#FFFFFF" if (rv*299 + gv*587 + bv*114)/1000 < 140 else "#000000"
                 except Exception:
                     tc = "#FFFFFF"
+                detail_label = "계획" if it.get("plan") else f"'{year[2:]}"
                 detail_canvas.create_text(
-                    (x1+x2)/2, (y1+y2)/2, text=f"'{year[2:]}",
-                    fill=tc, font=(self.font_family, 7), anchor="center",
+                    (x1+x2)/2, (y1+y2)/2, text=detail_label,
+                    fill=tc, font=(self.font_family, fs_small), anchor="center",
                     tags=("branch_label",))
 
         if detail_hbar:

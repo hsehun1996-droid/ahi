@@ -12,8 +12,10 @@ Python + CustomTkinter(ctk) 기반, 라이트모드, 블루 액센트. 한국어
 - **하자기간 관리**: 카테고리별 하자기간 설정, 중복 시공 자동 감지(빗금 표시)
 - **포장상태 관리**: DI지수, HPCI등급, AAR등급, RD등급, IRI등급
 - **분석 기능**: 개량 우선순위 선정, 결함리스크 분석
+- **사업계획**: 개량 우선순위 산정 → 구간 다중선택 → 사업계획 표 작성/수정(공법은 범례 공법만) → 확정 시 보수이력에 계획 엔트리(모식도에 '계획' 표기)로 반영
+- **운영계획변경**: (보수필요 − 사업계획) 후보 산정 → 노선별 작성 → 한글(HWP) 양식 자동 작성(방법 A: 한글 COM 자동화)
 - **구조물/IC 관리**: 교량·터널·IC·JCT·램프 이력
-- **저장/내보내기**: CSV 저장·불러오기(자동 로드), PDF 내보내기, Excel 내보내기
+- **저장/내보내기**: CSV 저장·불러오기(자동 로드), PDF 내보내기, Excel 내보내기, 한글(HWP) 양식 내보내기
 - **캐시**: SQLite DB(`highway_data.db`)로 빠른 재로드
 - **입력 모드**: 본부/지사 모드 전환 (표시 항목 차이)
 
@@ -22,6 +24,7 @@ Python + CustomTkinter(ctk) 기반, 라이트모드, 블루 액센트. 한국어
 - `Pillow`, `reportlab` — PDF 내보내기 (선택)
 - `openpyxl` — Excel 내보내기 (선택)
 - `CTkMessagebox` — 다크모드 팝업 (선택)
+- `pywin32` — 한글(HWP) 양식 자동 작성 (운영계획변경, Windows + 한글 설치 시에만)
 
 ---
 
@@ -36,8 +39,11 @@ project1/
 ├── constants.py           ← 모든 상수·설정값
 ├── utils.py               ← 유틸리티 함수 (비GUI)
 ├── canvas_utils.py        ← 캔버스 렌더링 전용 유틸
+├── hwp_export.py          ← 운영계획변경 한글(HWP) 양식 자동 작성 (방법 A: 한글 COM)
+├── templates/
+│   └── operation_plan_template.hwp  ← 운영계획변경 한글 양식 템플릿
 └── mixins/
-    ├── __init__.py        ← 8개 Mixin 일괄 export
+    ├── __init__.py        ← 9개 Mixin 일괄 export
     ├── ui_mixin.py        ← UI 구성, 팝업 헬퍼, 대시보드, 공법/하자 설정
     ├── route_mixin.py     ← 노선 추가/수정/삭제, 탭 전환, 연도 필터
     ├── ic_mixin.py        ← IC·구조물·포장상태 데이터 다이얼로그
@@ -45,7 +51,8 @@ project1/
     ├── entry_mixin.py     ← 이력 입력 모드(본부/지사), 이력 추가
     ├── io_mixin.py        ← CSV·Excel·PS·PDF 저장/불러오기/내보내기, SQLite 캐시
     ├── window_mixin.py    ← 창 종료, 창 크기, 시작 시 자동 CSV 로드
-    └── canvas_mixin.py    ← 모식도 그리기, 돋보기/확대, 이력 상세 다이얼로그
+    ├── canvas_mixin.py    ← 모식도 그리기, 돋보기/확대, 이력 상세 다이얼로그
+    └── plan_mixin.py      ← 사업계획·운영계획변경 작성/확정, 한글 내보내기 연동
 ```
 
 ### 클래스 상속 구조
@@ -79,6 +86,10 @@ class MaintenanceApp(
 | `mixins/io_mixin.py` | `on_save_csv`, `on_load_csv`, `on_load_excel`, `on_export_pdf`, `on_export_all_to_excel`, `_write_sqlite_cache`, `_load_from_sqlite_cache` |
 | `mixins/window_mixin.py` | `on_closing`, `set_initial_window_size`, `auto_load_csvs_on_start` |
 | `mixins/canvas_mixin.py` | `draw_schematic`, `draw_detail_schematic`, `toggle_magnifier_mode`, `open_entry_dialog`, `on_canvas_double_click`, `on_open_detail_table` 등 |
+| `mixins/plan_mixin.py` | `on_business_plan`, `_bp_confirm`, `_inject_plan_entries`, `on_operation_plan_change`, `_build_hwp_payload`, `_run_hwp_export`, 사업계획/운영계획변경 저장·로드 |
+| `hwp_export.py` | `hwp_available`, `export_operation_change` — 한글 COM으로 양식 표 채우기 |
+
+> 참고: `on_improvement_priority`(analysis_mixin)는 `apply_label`/`apply_callback`/`exclude_sections`/`default_year` 인자로 사업계획·운영계획변경 양쪽에서 재사용된다. 계획 엔트리는 `entries`에 `plan=True`로 주입되며, 이력 CSV·SQLite 저장 시 제외되고 `all_business_plan.csv`에 별도 보관 후 로드 시 재주입된다.
 
 ---
 
@@ -96,4 +107,6 @@ class MaintenanceApp(
 | `all_aar_data.csv` | AAR 등급 데이터 |
 | `all_routes_methods.csv` | 공법별 색상·카테고리 설정 |
 | `warranty_settings.csv` | 카테고리별 하자기간 설정 |
+| `all_business_plan.csv` | 사업계획 확정 구간 (모식도 '계획' 표기, 로드 시 entries에 재주입) |
+| `all_operation_change.csv` | 운영계획변경 작성 구간 (비고=사업계획/운영계획 변경, orig 이정 포함) |
 | `highway_data.db` | SQLite 캐시 (빠른 재로드용) |

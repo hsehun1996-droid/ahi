@@ -48,6 +48,8 @@ try:
 except ImportError:
     CTkMessagebox = None
 
+# 작업 폴더가 달라도 같은 폴더의 constants/utils 등을 찾도록 프로젝트 루트를 sys.path 에 추가
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from constants import *
 from utils import (
     get_logger, log_exception, log_warning,
@@ -62,13 +64,13 @@ from canvas_utils import (
 )
 from mixins import (
     UIMixin, RouteMixin, ICMixin, AnalysisMixin,
-    EntryMixin, IOMixin, WindowMixin, CanvasMixin,
+    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin,
 )
 
 
 class MaintenanceApp(
     UIMixin, RouteMixin, ICMixin, AnalysisMixin,
-    EntryMixin, IOMixin, WindowMixin, CanvasMixin,
+    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin,
     ctk.CTk,
 ):
     def __init__(self):
@@ -150,6 +152,16 @@ class MaintenanceApp(
         self.view_year_stack = tk.BooleanVar(value=False)
         # 모식도 보기 모드: "기본", "HPCI"
         self.view_mode = tk.StringVar(value="기본")
+
+        # 사업계획 / 운영계획변경 상태
+        #  business_plan  : 확정/작성 중인 사업계획 구간 목록
+        #  operation_changes: 운영계획변경(한글 양식) 작성 구간 목록
+        self.plan_year = datetime.now().strftime("%Y")   # 계획 기준 연도 (예: 2026)
+        self.business_plan = []        # [{route,direction,lane,start,end,method,year}]
+        self.business_plan_confirmed = False
+        self.operation_changes = []    # [{route,direction,lane,start,end,method,note,...}]
+        self.business_plan_window = None
+        self.operation_change_window = None
 
         # 포장상태불량률 보기 옵션
         self.view_hpci = tk.BooleanVar(value=False)
