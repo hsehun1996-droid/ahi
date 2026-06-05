@@ -982,7 +982,7 @@ class AnalysisMixin:
                 "   - 예) 3.5~3.9km → 3.6~3.8km 구간 내 셀만 검사\n\n"
                 "3. [포장상태 판단 지표 선택]\n"
                 "   ─ 일반 공법 (덧씌우기 등)\n"
-                "     · HPCI 5등급 이상인 100m 셀이 하나라도 있으면 하자 우려\n"
+                "     · DI 지수 5.0 이상인 100m 셀이 하나라도 있으면 하자 우려\n"
                 "   ─ 표면개량 카테고리 공법\n"
                 "     · RD(소성변형) ≥ 5.0 또는 IRI(평탄성) ≥ 3.5 인 셀 존재 시 하자 우려\n\n"
                 "4. [검사 연도 범위]\n"
@@ -1069,7 +1069,7 @@ class AnalysisMixin:
 
             for route in self.routes:
                 rname     = route.get("name", "")
-                hpci_data = route.get("hpci_data", {})
+                di_data   = route.get("di_data",   {})
                 rd_data   = route.get("rd_data",   {})
                 iri_data  = route.get("iri_data",  {})
                 entries   = route.get("entries", [])
@@ -1113,8 +1113,8 @@ class AnalysisMixin:
                             (iri_data, "IRI", 3.5),
                         ]
                     else:
-                        # 그 외: HPCI 5등급 이상
-                        check_sets = [(hpci_data, "HPCI", 5.0)]
+                        # 그 외: DI 지수 5.0 이상
+                        check_sets = [(di_data, "DI", 5.0)]
 
                     bad_cells = []
                     for data_dict, indicator, threshold in check_sets:
@@ -1221,6 +1221,381 @@ class AnalysisMixin:
 
         # 창 열릴 때 자동 분석
         dlg.after(100, calculate_defects)
+
+    def on_defect_inspection(self):
+        """하자점검 창을 엽니다.
+
+        현재 연도를 기준으로, 각 보수이력의 공법에 설정된 하자기간이 아직
+        만료되지 않은(=하자담보책임기간 내) 구간을 표출합니다.
+        금년에 하자기간이 만료되는 구간(잔여 0년)을 최상단에 두어,
+        만료가 임박한 구간부터 보이도록 정렬합니다.
+        노선/이정/방향/공법 등 컬럼별 필터를 제공합니다.
+        """
+        if hasattr(self, "_defect_inspect_window") and self._defect_inspect_window is not None \
+                and self._defect_inspect_window.winfo_exists():
+            self._defect_inspect_window.lift()
+            self._defect_inspect_window.focus_force()
+            return
+
+        dlg = self._create_popup_window(self)
+        self._defect_inspect_window = dlg
+        dlg.title("")
+        dlg.geometry("1280x640")
+        dlg.transient(self)
+        dlg.lift()
+        dlg.focus_force()
+
+        cur_year = datetime.now().year
+
+        # 상단 제목/건수 행
+        top = ctk.CTkFrame(dlg, fg_color="transparent")
+        top.pack(fill="x", padx=10, pady=10)
+        ctk.CTkLabel(top, text=f"하자점검 (기준연도 {cur_year}년)",
+                     font=(self.font_family, 14, "bold")).pack(side="left")
+        lbl_count = ctk.CTkLabel(top, text="", font=(self.font_family, 13, "bold"),
+                                 text_color="#E33E4B")
+        lbl_count.pack(side="right", padx=(0, 10))
+
+        inspect_data = []
+        active_filters = {}
+
+        def show_algorithm_info():
+            info = self._create_popup_window(dlg)
+            info.title("")
+            info.geometry("720x420")
+            info.transient(dlg)
+            info.grab_set()
+            info.lift()
+            info.focus_force()
+            txt = ctk.CTkTextbox(info, font=(self.font_family, 12), wrap="word")
+            txt.pack(fill="both", expand=True, padx=16, pady=(14, 8))
+            txt.insert("end", (
+                "■ 하자점검 대상 선정 기준\n\n"
+                f"1. [기준 연도]\n"
+                f"   - 현재 연도({cur_year}년)를 기준으로 판단합니다.\n\n"
+                "2. [하자기간 내 구간 표출]\n"
+                "   - 각 보수이력의 공법에 설정된 하자담보책임기간을 확인\n"
+                "   - 보수연도 + 하자기간(만료연도)이 기준연도 이상인 구간만 표출\n"
+                "   - 즉, 현재 하자담보책임기간 내에 있는 구간만 대상\n\n"
+                "3. [정렬]\n"
+                "   - 만료연도가 빠른(임박한) 구간을 최상단에 배치\n"
+                "   - 금년에 만료되는 구간(잔여 0년)이 가장 위에 표시\n\n"
+                "4. [필터]\n"
+                "   - 컬럼 머리글 클릭 시 노선·이정·방향·공법 등으로 필터 가능\n"
+                "   - 상단 검색창으로 키워드 검색 가능\n"
+            ))
+            txt.configure(state="disabled")
+            self._create_close_button(info, info.destroy, width=100, height=32).pack(pady=(0, 12))
+
+        # 필터(검색) 행
+        filter_frame = ctk.CTkFrame(dlg, fg_color="transparent")
+        filter_frame.pack(fill="x", padx=10, pady=(0, 5))
+        var_filter = tk.StringVar()
+        ent_filter = ctk.CTkEntry(filter_frame, textvariable=var_filter, width=250,
+                                  placeholder_text="노선, 이정, 공법 등 검색...")
+        ent_filter.pack(side="left", padx=5)
+
+        # 트리뷰 스타일
+        style = ttk.Style(dlg)
+        style.theme_use("clam")
+        style.configure("Inspect.Treeview.Heading", background="#4A5568", foreground="white",
+                        relief="flat", font=(self.font_family, 10, "bold"))
+        style.map("Inspect.Treeview.Heading", background=[("active", "#2D3748")])
+        style.configure("Inspect.Treeview", background="#2D3748", fieldbackground="#2D3748",
+                        foreground="white", rowheight=26, borderwidth=0)
+        style.map("Inspect.Treeview", background=[("selected", "#7B2222")])
+
+        i_cols = ("route", "section", "direction", "lane", "method",
+                  "category", "warranty", "work_year", "expire_year", "remaining")
+        i_names = {
+            "route":       "노선",
+            "section":     "이정(km)",
+            "direction":   "방향",
+            "lane":        "차로",
+            "method":      "적용공법",
+            "category":    "하자카테고리",
+            "warranty":    "하자기간(년)",
+            "work_year":   "보수연도",
+            "expire_year": "만료연도",
+            "remaining":   "잔여(년)",
+        }
+
+        tree_frame = ctk.CTkFrame(dlg, fg_color="transparent")
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        tree = ttk.Treeview(tree_frame, columns=i_cols, show="headings",
+                            selectmode="browse", style="Inspect.Treeview")
+        for c in i_cols:
+            tree.heading(c, text=i_names[c])
+            tree.column(c, anchor="center")
+        tree.column("route",       width=120)
+        tree.column("section",     width=150)
+        tree.column("direction",   width=80)
+        tree.column("lane",        width=60)
+        tree.column("method",      width=140)
+        tree.column("category",    width=110)
+        tree.column("warranty",    width=85)
+        tree.column("work_year",   width=75)
+        tree.column("expire_year", width=75)
+        tree.column("remaining",   width=70)
+        # 금년 만료(잔여 0년) 강조
+        tree.tag_configure("expire_now", background="#7B2222", foreground="#FFFFFF")
+        tree.tag_configure("normal")
+
+        sb = ctk.CTkScrollbar(tree_frame, orientation="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tree.pack(side="left", fill="both", expand=True)
+
+        def get_val(item, col):
+            return str(item.get(col, ""))
+
+        def refresh_tree():
+            for row in tree.get_children():
+                tree.delete(row)
+            kwd = var_filter.get().lower()
+            shown = 0
+            for item in inspect_data:
+                row_vals = {c: get_val(item, c) for c in i_cols}
+                if kwd and kwd not in " ".join(row_vals.values()).lower():
+                    continue
+                if any(row_vals[c] not in active_filters[c] for c in active_filters):
+                    continue
+                tag = "expire_now" if item.get("remaining") == 0 else "normal"
+                tree.insert("", "end", values=[row_vals[c] for c in i_cols], tags=(tag,))
+                shown += 1
+            lbl_count.configure(text=f"총 {shown}건 (하자기간 내)" if shown else "")
+
+        def calculate_inspection():
+            nonlocal inspect_data
+            inspect_data = []
+            for route in self.routes:
+                rname   = route.get("name", "")
+                entries = route.get("entries", [])
+                for entry in entries:
+                    wd = str(entry.get("work_date", ""))
+                    if len(wd) < 4:
+                        continue
+                    try:
+                        work_year = int(wd[:4])
+                    except ValueError:
+                        continue
+                    if work_year > cur_year:
+                        continue  # 미래 시공(계획 등) 제외
+
+                    method   = entry.get("method", "")
+                    warranty = get_method_warranty_period(method)
+                    expire_year = work_year + warranty
+                    # 하자담보책임기간이 이미 만료된 구간은 제외
+                    if expire_year < cur_year:
+                        continue
+                    remaining = expire_year - cur_year
+
+                    try:
+                        e_start = float(entry.get("start", 0.0))
+                        e_end   = float(entry.get("end", 0.0))
+                    except (ValueError, TypeError):
+                        e_start, e_end = 0.0, 0.0
+
+                    inspect_data.append({
+                        "route":       rname,
+                        "section":     f"{e_start:.3f}~{e_end:.3f}",
+                        "direction":   entry.get("direction", ""),
+                        "lane":        entry.get("lane", "전차로"),
+                        "method":      method,
+                        "category":    METHOD_CATEGORY_MAP.get(method, "") or "-",
+                        "warranty":    warranty,
+                        "work_year":   work_year,
+                        "expire_year": expire_year,
+                        "remaining":   remaining,
+                        "_start":      e_start,
+                        "_end":        e_end,
+                    })
+
+            # 만료가 임박한 순(만료연도 오름차순 → 잔여 오름차순), 동률은 노선/이정 순
+            inspect_data.sort(key=lambda x: (x["expire_year"], x["remaining"],
+                                             x["route"], x["_start"]))
+            active_filters.clear()
+            refresh_tree()
+            if not inspect_data:
+                self._show_info("하자점검", "하자기간 내 구간이 없습니다.")
+
+        def open_header_menu(col_name, event):
+            unique_vals = sorted(set(get_val(i, col_name) for i in inspect_data))
+            if not unique_vals:
+                return
+            fdlg = self._create_popup_window(dlg)
+            fdlg.wm_overrideredirect(True)
+            fdlg.attributes('-topmost', True)
+            w, h = 260, 420
+            x, y = event.x_root, event.y_root
+            try:
+                if x + w > fdlg.winfo_screenwidth(): x = fdlg.winfo_screenwidth() - w
+                if y + h > fdlg.winfo_screenheight(): y = fdlg.winfo_screenheight() - h
+            except Exception:
+                pass
+            fdlg.geometry(f"{w}x{h}+{x}+{y}")
+            fdlg.lift()
+            fdlg.focus_force()
+
+            closing = {"done": False}
+            outside_click_bind_id = None
+
+            def close_menu():
+                if closing["done"]:
+                    return
+                closing["done"] = True
+                try:
+                    if outside_click_bind_id:
+                        dlg.unbind("<Button-1>", outside_click_bind_id)
+                except Exception:
+                    pass
+                try:
+                    fdlg.destroy()
+                except Exception:
+                    pass
+
+            def check_outside_click(e):
+                try:
+                    widget = e.widget
+                    if widget and widget.winfo_toplevel() == fdlg:
+                        return
+                    cx, cy = e.x_root, e.y_root
+                    rx, ry = fdlg.winfo_rootx(), fdlg.winfo_rooty()
+                    rw, rh = fdlg.winfo_width(), fdlg.winfo_height()
+                    if not (rx <= cx <= rx + rw and ry <= cy <= ry + rh):
+                        close_menu()
+                except Exception:
+                    close_menu()
+
+            outside_click_bind_id = dlg.bind("<Button-1>", check_outside_click, add="+")
+            fdlg.bind("<FocusOut>", lambda _e: close_menu())
+            fdlg.bind("<Escape>", lambda _e: close_menu())
+            fdlg.protocol("WM_DELETE_WINDOW", close_menu)
+
+            mf = ctk.CTkFrame(fdlg, fg_color="#FFFFFF", border_width=1,
+                              border_color="#C8D7EA", corner_radius=12)
+            mf.pack(fill="both", expand=True)
+
+            sf = ctk.CTkScrollableFrame(mf, fg_color="#F8FBFF", corner_radius=10)
+            sf.pack(fill="both", expand=True, padx=6, pady=6)
+
+            cur_set = active_filters.get(col_name, set(unique_vals))
+            v_map = {}
+
+            def apply():
+                active_filters[col_name] = {v for v, var in v_map.items() if var.get()}
+                if len(active_filters[col_name]) == len(unique_vals):
+                    del active_filters[col_name]
+                refresh_tree()
+
+            all_v = tk.BooleanVar(value=(len(cur_set) == len(unique_vals)))
+
+            def toggle_all():
+                val = all_v.get()
+                for v in v_map.values():
+                    v.set(val)
+                apply()
+
+            ctk.CTkCheckBox(
+                sf, text="(전체)", variable=all_v, command=toggle_all,
+                text_color=TITLE_TEXT, checkbox_width=18, checkbox_height=18,
+                border_width=2, fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
+                border_color="#AFC4DE"
+            ).pack(anchor="w", pady=2)
+
+            for v in unique_vals:
+                var = tk.BooleanVar(value=(v in cur_set))
+                v_map[v] = var
+                ctk.CTkCheckBox(
+                    sf, text=str(v), variable=var, command=apply,
+                    text_color=TITLE_TEXT, checkbox_width=18, checkbox_height=18,
+                    border_width=2, fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
+                    border_color="#AFC4DE"
+                ).pack(anchor="w", pady=1)
+
+            self._create_button(
+                mf, text="닫기", command=close_menu, height=28,
+                fg_color="#EEF4FB", hover_color="#E0ECF8", text_color=TITLE_TEXT,
+                border_width=1, border_color="#C8D7EA"
+            ).pack(fill="x", padx=6, pady=(0, 6))
+
+        def on_head_click(e):
+            r = tree.identify_region(e.x, e.y)
+            if r == "heading":
+                cid = tree.identify_column(e.x)
+                if cid:
+                    open_header_menu(i_cols[int(cid[1:]) - 1], e)
+        tree.bind("<Button-1>", on_head_click)
+
+        def on_row_dblclick(e):
+            sel = tree.selection()
+            if not sel:
+                return
+            vals = tree.item(sel[0], "values")
+            try:
+                rname = str(vals[0])
+                parts = str(vals[1]).split("~")
+                s = float(parts[0])
+                en = float(parts[1])
+                direction = str(vals[2]) if len(vals) > 2 else None
+                lane = str(vals[3]) if len(vals) > 3 else None
+                self.navigate_to_section(rname, s, en, direction=direction, lane=lane)
+            except Exception:
+                pass
+        tree.bind("<Double-1>", on_row_dblclick)
+
+        def export_excel():
+            if not _EXCEL_LIBS_AVAILABLE:
+                self._show_error("라이브러리 필요", "openpyxl 필요")
+                return
+            if not inspect_data:
+                self._show_info("알림", "먼저 분석을 실행해 주세요.")
+                return
+            fpath = filedialog.asksaveasfilename(
+                title="하자점검 저장", defaultextension=".xlsx",
+                filetypes=[("Excel 파일", "*.xlsx")],
+                initialfile=f"{cur_year}년_하자점검.xlsx", parent=dlg
+            )
+            if not fpath:
+                return
+            try:
+                from openpyxl.styles import PatternFill
+                wb = Workbook(); ws = wb.active; ws.title = "하자점검"
+                hdrs = [i_names[c] for c in i_cols]
+                ws.append(hdrs)
+                hfont = Font(bold=True, color="FFFFFF")
+                hfill = PatternFill(start_color="C0392B", end_color="C0392B", fill_type="solid")
+                for cell in ws[1]:
+                    cell.font = hfont; cell.fill = hfill
+                    cell.alignment = Alignment(horizontal="center")
+                kwd = var_filter.get().lower()
+                for item in inspect_data:
+                    row_vals = {c: get_val(item, c) for c in i_cols}
+                    if kwd and kwd not in " ".join(row_vals.values()).lower():
+                        continue
+                    if any(row_vals[c] not in active_filters[c] for c in active_filters):
+                        continue
+                    ws.append([row_vals[c] for c in i_cols])
+                for col in ws.columns:
+                    mx = max((len(str(c.value or "")) for c in col), default=8)
+                    ws.column_dimensions[col[0].column_letter].width = min(mx + 4, 40)
+                wb.save(fpath)
+                self._show_info("저장 완료", f"저장되었습니다:\n{fpath}")
+            except Exception as ex:
+                self._show_error("오류", str(ex))
+
+        btn_row = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        btn_row.pack(side="right")
+        self._create_button(btn_row, text="알고리즘 설명", command=show_algorithm_info,
+                            fg_color="#4A5568", width=120).pack(side="left", padx=(0, 8))
+        self._create_button(btn_row, text="Excel 내보내기", command=export_excel,
+                            fg_color="#2D3748", width=120).pack(side="left", padx=(0, 8))
+        self._create_button(filter_frame, text="검색", command=refresh_tree, width=80).pack(side="left", padx=5)
+        ent_filter.bind("<Return>", lambda e: refresh_tree())
+
+        # 창 열릴 때 자동 분석
+        dlg.after(100, calculate_inspection)
 
     def navigate_to_section(self, route_name: str, start_km: float, end_km: float,
                              direction=None, lane=None):

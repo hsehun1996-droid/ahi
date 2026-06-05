@@ -83,7 +83,7 @@ class MaintenanceApp(
 | `mixins/ui_mixin.py` | `_build_ui`, `_build_dashboard`, `refresh_dashboard`, `render_legend`, `on_warranty_settings`, `on_manage_methods` 등 |
 | `mixins/route_mixin.py` | `add_route`, `on_manage_routes`, `on_add_route`, `on_tab_changed`, `update_year_filter_values` 등 |
 | `mixins/ic_mixin.py` | `on_manage_ic`, `on_manage_structures`, `_open_condition_data_dialog` |
-| `mixins/analysis_mixin.py` | `on_manage_di/hpci/aar/rd/iri`, `on_improvement_priority`, `on_defect_risk`, `navigate_to_section` |
+| `mixins/analysis_mixin.py` | `on_manage_di/hpci/aar/rd/iri`, `on_improvement_priority`, `on_defect_risk`(일반공법 판단지표 DI), `on_defect_inspection`(하자점검: 현재 하자기간 내 구간 표출·만료임박 정렬·컬럼별 필터), `navigate_to_section` |
 | `mixins/entry_mixin.py` | `on_add_entry`, `toggle_entry_mode`, `_apply_entry_mode_ui`, `generate_directions_from_name` |
 | `mixins/io_mixin.py` | `on_save_csv`, `on_load_csv`, `on_load_excel`, `on_export_pdf`, `on_export_all_to_excel`, `_write_sqlite_cache`, `_load_from_sqlite_cache` |
 | `mixins/window_mixin.py` | `on_closing`, `set_initial_window_size`, `auto_load_csvs_on_start` |

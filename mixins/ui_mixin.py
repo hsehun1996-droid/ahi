@@ -918,11 +918,18 @@ class UIMixin:
                       text_color="#FFFFFF", width=120, height=36, corner_radius=10,
                       font=(self.font_family, 14, "bold")).pack(side="left", padx=3, pady=8)
 
-        # 운영계획변경 (한글 양식 작성)
+        # 운영계획변경 (한글 양식 작성) - 사업계획과 동일한 파란색
         self._create_button(nav_bar, text="운영계획변경",
                       command=self.on_operation_plan_change,
-                      fg_color="#2F855A", hover_color="#276749",
+                      fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
                       text_color="#FFFFFF", width=140, height=36, corner_radius=10,
+                      font=(self.font_family, 14, "bold")).pack(side="left", padx=3, pady=8)
+
+        # 하자점검 (현재 하자기간 내 구간) - 하자발생 우려구간과 동일한 빨간색
+        self._create_button(nav_bar, text="하자점검",
+                      command=self.on_defect_inspection,
+                      fg_color=ACCENT_RED, hover_color=ACCENT_RED_HOVER,
+                      text_color="#FFFFFF", width=120, height=36, corner_radius=10,
                       font=(self.font_family, 14, "bold")).pack(side="left", padx=3, pady=8)
 
         # 하자발생 우려구간
