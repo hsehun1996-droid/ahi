@@ -13,7 +13,7 @@ Python + CustomTkinter(ctk) 기반, 라이트모드, 블루 액센트. 한국어
 - **포장상태 관리**: DI지수, HPCI등급, AAR등급, RD등급, IRI등급
 - **분석 기능**: 개량 우선순위 선정, 결함리스크 분석
 - **사업계획**: 개량 우선순위 산정 → 구간 다중선택 → 사업계획 표 작성/수정(공법은 범례 공법만) → 확정 시 보수이력에 계획 엔트리(모식도에 '계획' 표기)로 반영
-- **운영계획변경**: (보수필요 − 사업계획) 후보 산정 → 노선별 작성 → 한글(HWP) 양식 자동 작성(방법 A: 한글 COM 자동화)
+- **운영계획변경**: (보수필요 − 사업계획) 후보 산정 → 노선 선택(필수) → 노선명/사업명/목적/사업내용/단가 입력 → 한글(HWPX) 양식 자동 작성(zip+XML 직접 채움, 한글/COM 불필요)
 - **구조물/IC 관리**: 교량·터널·IC·JCT·램프 이력
 - **저장/내보내기**: CSV 저장·불러오기(자동 로드), PDF 내보내기, Excel 내보내기, 한글(HWP) 양식 내보내기
 - **캐시**: SQLite DB(`highway_data.db`)로 빠른 재로드
@@ -24,7 +24,7 @@ Python + CustomTkinter(ctk) 기반, 라이트모드, 블루 액센트. 한국어
 - `Pillow`, `reportlab` — PDF 내보내기 (선택)
 - `openpyxl` — Excel 내보내기 (선택)
 - `CTkMessagebox` — 다크모드 팝업 (선택)
-- `pywin32` — 한글(HWP) 양식 자동 작성 (운영계획변경, Windows + 한글 설치 시에만)
+- (운영계획변경 HWPX 내보내기는 표준 라이브러리 zip+XML만 사용 — 외부 라이브러리·한글·pywin32 불필요)
 
 ---
 
@@ -39,9 +39,9 @@ project1/
 ├── constants.py           ← 모든 상수·설정값
 ├── utils.py               ← 유틸리티 함수 (비GUI)
 ├── canvas_utils.py        ← 캔버스 렌더링 전용 유틸
-├── hwp_export.py          ← 운영계획변경 한글(HWP) 양식 자동 작성 (방법 A: 한글 COM)
+├── hwpx_export.py         ← 운영계획변경 한글(HWPX) 양식 자동 작성 (zip+XML 직접 채움)
 ├── templates/
-│   └── operation_plan_template.hwp  ← 운영계획변경 한글 양식 템플릿
+│   └── operation_plan_template.hwpx ← 운영계획변경 한글 양식 템플릿(HWPX)
 └── mixins/
     ├── __init__.py        ← 9개 Mixin 일괄 export
     ├── ui_mixin.py        ← UI 구성, 팝업 헬퍼, 대시보드, 공법/하자 설정
@@ -87,7 +87,7 @@ class MaintenanceApp(
 | `mixins/window_mixin.py` | `on_closing`, `set_initial_window_size`, `auto_load_csvs_on_start` |
 | `mixins/canvas_mixin.py` | `draw_schematic`, `draw_detail_schematic`, `toggle_magnifier_mode`, `open_entry_dialog`, `on_canvas_double_click`, `on_open_detail_table` 등 |
 | `mixins/plan_mixin.py` | `on_business_plan`, `_bp_confirm`, `_inject_plan_entries`, `on_operation_plan_change`, `_build_hwp_payload`, `_run_hwp_export`, 사업계획/운영계획변경 저장·로드 |
-| `hwp_export.py` | `hwp_available`, `export_operation_change` — 한글 COM으로 양식 표 채우기 |
+| `hwpx_export.py` | `export_operation_change` — HWPX(zip+XML)를 직접 열어 제목/목적/표0·1·2 셀 채우기 (한글/COM 불필요) |
 
 > 참고: `on_improvement_priority`(analysis_mixin)는 `apply_label`/`apply_callback`/`exclude_sections`/`default_year` 인자로 사업계획·운영계획변경 양쪽에서 재사용된다. 계획 엔트리는 `entries`에 `plan=True`로 주입되며, 이력 CSV·SQLite 저장 시 제외되고 `all_business_plan.csv`에 별도 보관 후 로드 시 재주입된다.
 
