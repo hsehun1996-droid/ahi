@@ -679,9 +679,13 @@ class CanvasMixin:
             route["tree_item_to_index"].clear()
 
         # 이력 그리기
-        if view_mode == "기본":
+        sel_mode = getattr(self, "schematic_select_mode", False)
+        if view_mode == "기본" or sel_mode:
+            # 선택 모드에서는 DI 위에 보수이력(공법 색상)을 함께 표시하고
+            # 연도 필터와 무관하게 모든 이력을 보여 선택불가 판정과 일치시킨다.
             self._draw_entries(canvas, route, bar1_top, bar2_top, bar_h, lane_count, x_of_km,
-                               gaps_px, selected_year, item_map=route["canvas_item_to_index"])
+                               gaps_px, "모두" if sel_mode else selected_year,
+                               item_map=route["canvas_item_to_index"])
 
         # 구조물 그리기 (교량, 터널) - 이력 위에 표시되도록 이력 그리기 이후에 호출
         self._draw_structures(canvas, route, r_start, r_end, bar1_top, bar2_top, bar_h,
@@ -1005,7 +1009,13 @@ class CanvasMixin:
         dlg.geometry(f"{w}x{h}+{x}+{y}")
 
     def exit_magnifier_mode(self, event=None):
-        """ESC로 돋보기 모드 강제 종료 + 상세 모식도 초기화."""
+        """ESC로 돋보기 모드 강제 종료 + 상세 모식도 초기화.
+
+        모식도 선택 모드 중에는 ESC가 모드 종료 대신 '선택 전체 해제'로 동작한다.
+        """
+        if getattr(self, "schematic_select_mode", False):
+            self._clear_schematic_selection()
+            return
         if not self.magnifier_mode:
             return
         self.magnifier_mode = False
