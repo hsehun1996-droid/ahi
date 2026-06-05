@@ -8,7 +8,8 @@
       "Bash(git init:*)",
       "Bash(git add:*)",
       "Bash(mkdir -p templates)",
-      "Bash(cp \"/root/.claude/uploads/5854f11b-087f-412e-8c4f-3a096b875d9d/a040aaa8-______.hwp\" templates/operation_plan_template.hwp)"
+      "Bash(cp \"/root/.claude/uploads/5854f11b-087f-412e-8c4f-3a096b875d9d/a040aaa8-______.hwp\" templates/operation_plan_template.hwp)",
+      "Bash(cp \"/root/.claude/uploads/8bc18eef-7fdb-4d7b-966b-e6634b4c222b/efa02c83-__.hwpx\" /home/user/ahi/templates/operation_plan_template.hwpx && echo \"copied\"; sed -n '30,45p' mixins/plan_mixin.py)"
     ]
   }
 }

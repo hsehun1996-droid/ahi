@@ -8,3 +8,4 @@ from .io_mixin import IOMixin
 from .window_mixin import WindowMixin
 from .canvas_mixin import CanvasMixin
 from .plan_mixin import PlanMixin
+from .select_mixin import SelectMixin

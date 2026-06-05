@@ -10,7 +10,8 @@
 2) 운영계획변경(on_operation_plan_change)
    - 후보 = (보수 필요 구간) - (사업계획 지정 구간)
    - 노선별 보기. 사업계획 구간은 이미 표출(비고=사업계획), 신규 선택분(비고=운영계획 변경)
-   - '한글 내보내기' → 단위사업명/목적/단가 입력 → HWP 양식(operation_plan_template.hwp) 작성
+   - 노선 선택 후 '한글 내보내기' → 노선명/사업명/목적/사업내용/단가 입력
+     → HWPX 양식(operation_plan_template.hwpx)을 zip+XML로 직접 작성(hwpx_export)
 """
 import os
 import csv
@@ -20,10 +21,10 @@ import customtkinter as ctk
 from datetime import datetime
 
 from constants import (
-    PRIMARY_BLUE, PRIMARY_BLUE_HOVER, TITLE_TEXT, METHOD_STYLES,
+    PRIMARY_BLUE, PRIMARY_BLUE_HOVER, TITLE_TEXT, METHOD_STYLES, GRID_KM,
 )
 from utils import (
-    get_user_data_dir, log_exception, read_csv_with_encoding,
+    get_user_data_dir, log_exception, read_csv_with_encoding, lane_conflict,
 )
 
 BUSINESS_PLAN_CSV = "all_business_plan.csv"
@@ -244,10 +245,15 @@ class PlanMixin:
                             fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
                             text_color="#FFFFFF",
                             font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
+        self._create_button(top, text="모식도에서 선택",
+                            command=self._bp_open_schematic_select, width=150,
+                            fg_color="#2C5282", hover_color="#22436B",
+                            text_color="#FFFFFF",
+                            font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
 
         ctk.CTkLabel(
             dlg,
-            text="‘개량 우선순위 산정’으로 구간을 선택해 추가하고, 표에서 이정·방향·차로·공법을 "
+            text="‘개량 우선순위 산정’ 또는 ‘모식도에서 선택’으로 구간을 추가하고, 표에서 이정·방향·차로·공법을 "
                  "수정한 뒤 ‘사업계획 확정’을 누르세요. (셀 더블클릭 = 수정)",
             font=(self.font_family, 11), text_color="#5A6B82", anchor="w", justify="left",
         ).pack(fill="x", padx=16, pady=(0, 6))
@@ -294,6 +300,14 @@ class PlanMixin:
             apply_label="사업계획 적용",
             apply_callback=self._bp_apply_priority,
             default_year=self.plan_year,
+        )
+
+    def _bp_open_schematic_select(self):
+        """모식도에서 직접 사업대상 구간을 선택(우선순위 산정과 동일한 적용 경로)."""
+        self.begin_schematic_selection(
+            "사업대상",
+            self._bp_apply_priority,
+            origin_window=self.business_plan_window,
         )
 
     def _bp_apply_priority(self, items, plan_year):
@@ -432,6 +446,11 @@ class PlanMixin:
                             fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
                             text_color="#FFFFFF",
                             font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
+        self._create_button(top, text="모식도에서 선택",
+                            command=self._oc_open_schematic_select, width=150,
+                            fg_color="#2C5282", hover_color="#22436B",
+                            text_color="#FFFFFF",
+                            font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
         self._create_button(top, text="한글 내보내기",
                             command=self._oc_export_hwp, width=140,
                             fg_color="#2F855A", hover_color="#276749",
@@ -524,8 +543,8 @@ class PlanMixin:
                 "orig_end": round(float(item.get("end", 0)), 3),
             })
 
-    def _oc_open_priority(self):
-        # 후보에서 사업계획 지정 구간 제외
+    def _oc_build_exclude(self):
+        """운영계획변경 후보에서 제외할 구간(사업계획 지정 구간)."""
         exclude = [
             {"route": p.get("route"), "direction": p.get("direction"),
              "lane": p.get("lane"),
@@ -539,11 +558,23 @@ class PlanMixin:
              "end": float(p.get("end", 0))}
             for p in self.business_plan
         ]
+        return exclude
+
+    def _oc_open_priority(self):
         self.on_improvement_priority(
             apply_label="운영계획변경 적용",
             apply_callback=self._oc_apply_priority,
-            exclude_sections=exclude,
+            exclude_sections=self._oc_build_exclude(),
             default_year=self.plan_year,
+        )
+
+    def _oc_open_schematic_select(self):
+        """모식도에서 직접 운영계획변경 구간을 선택."""
+        self.begin_schematic_selection(
+            "운영계획변경",
+            self._oc_apply_priority,
+            exclude_sections=self._oc_build_exclude(),
+            origin_window=self.operation_change_window,
         )
 
     def _oc_apply_priority(self, items, plan_year):
@@ -589,8 +620,17 @@ class PlanMixin:
 
     # ───────────────────────────── HWP 내보내기 ─────────────────────────────
     def _oc_export_hwp(self):
-        if not self.operation_changes:
-            self._show_info("알림", "운영계획변경 구간이 없습니다.")
+        # 노선을 반드시 선택해야 함('전체'이면 양식 작성 불가)
+        sel = getattr(self, "_oc_route_var", None)
+        selname = sel.get() if sel is not None else "전체"
+        if selname == "전체":
+            self._show_info("노선 선택 필요", "노선을 결정해주세요.")
+            return
+
+        changes = [r for r in self.operation_changes
+                   if str(r.get("route")) == selname]
+        if not changes:
+            self._show_info("알림", f"'{selname}' 노선의 운영계획변경 구간이 없습니다.")
             return
 
         # 사업계획 구간 중 이정이 수정된 항목이 있는지 확인
@@ -599,7 +639,7 @@ class PlanMixin:
                 abs(float(r.get("start", 0)) - float(r.get("orig_start", r.get("start", 0)))) > 1e-6
                 or abs(float(r.get("end", 0)) - float(r.get("orig_end", r.get("end", 0)))) > 1e-6
             )
-            for r in self.operation_changes
+            for r in changes
         )
         if modified:
             if not messagebox.askyesno(
@@ -607,12 +647,12 @@ class PlanMixin:
                 "사업계획 구간의 이정이 수정되었습니다.\n변경된 이정으로 운영계획변경을 적용하시겠습니까?"):
                 return
 
-        self._open_hwp_input_dialog()
+        self._open_hwp_input_dialog(selname, changes)
 
-    def _open_hwp_input_dialog(self):
+    def _open_hwp_input_dialog(self, route_name="", changes=None):
         dlg = self._create_popup_window(self)
         dlg.title("")
-        dlg.geometry("520x440")
+        dlg.geometry("560x560")
         dlg.transient(self)
         dlg.grab_set()
         dlg.lift()
@@ -620,29 +660,46 @@ class PlanMixin:
 
         ctk.CTkLabel(dlg, text="운영계획변경 - 한글 양식 작성",
                      font=(self.font_family, 15, "bold"),
-                     text_color=TITLE_TEXT).pack(anchor="w", padx=18, pady=(16, 10))
+                     text_color=TITLE_TEXT).pack(anchor="w", padx=18, pady=(16, 8))
 
         frm = ctk.CTkFrame(dlg, fg_color="transparent")
         frm.pack(fill="both", expand=True, padx=18)
 
-        ctk.CTkLabel(frm, text="단위사업명", font=(self.font_family, 12, "bold"),
+        # 1) 노선명 (제목 1줄 + 표 노선명) — 선택한 노선으로 기본값 제공
+        ctk.CTkLabel(frm, text="노선명 (제목 첫째 줄)", font=(self.font_family, 12, "bold"),
                      text_color=TITLE_TEXT).pack(anchor="w")
-        var_name = tk.StringVar(value="")
-        ctk.CTkEntry(frm, textvariable=var_name, width=460,
-                     placeholder_text="예) 중앙선 246.9-313.5k 콘크리트포장 덧씌우기").pack(anchor="w", pady=(2, 10))
+        var_route = tk.StringVar(value=route_name or "")
+        ctk.CTkEntry(frm, textvariable=var_route, width=500,
+                     placeholder_text="예) 중앙선 246.9~313.5k").pack(anchor="w", pady=(2, 8))
 
+        # 2) 사업명 (제목 2줄)
+        ctk.CTkLabel(frm, text="사업명 (제목 둘째 줄)", font=(self.font_family, 12, "bold"),
+                     text_color=TITLE_TEXT).pack(anchor="w")
+        var_project = tk.StringVar(value="")
+        ctk.CTkEntry(frm, textvariable=var_project, width=500,
+                     placeholder_text="예) 콘크리트포장 덧씌우기").pack(anchor="w", pady=(2, 8))
+
+        # 3) 목적 (기본값 제공·수정 가능)
         ctk.CTkLabel(frm, text="목적", font=(self.font_family, 12, "bold"),
                      text_color=TITLE_TEXT).pack(anchor="w")
-        txt_purpose = ctk.CTkTextbox(frm, width=460, height=90,
+        txt_purpose = ctk.CTkTextbox(frm, width=500, height=80,
                                      font=(self.font_family, 12), wrap="word")
-        txt_purpose.pack(anchor="w", pady=(2, 10))
+        txt_purpose.pack(anchor="w", pady=(2, 8))
         txt_purpose.insert("end", DEFAULT_PURPOSE)
 
+        # 4) 사업내용 (소요예산 산출내역)
+        ctk.CTkLabel(frm, text="사업내용 (소요예산 산출내역)", font=(self.font_family, 12, "bold"),
+                     text_color=TITLE_TEXT).pack(anchor="w")
+        var_content = tk.StringVar(value="")
+        ctk.CTkEntry(frm, textvariable=var_content, width=500,
+                     placeholder_text="예) 콘크리트포장 절삭 덧씌우기(t=10cm)").pack(anchor="w", pady=(2, 8))
+
+        # 5) 단가
         ctk.CTkLabel(frm, text="단가 (백만원/km)", font=(self.font_family, 12, "bold"),
                      text_color=TITLE_TEXT).pack(anchor="w")
         var_price = tk.StringVar(value="")
         ctk.CTkEntry(frm, textvariable=var_price, width=200,
-                     placeholder_text="예) 370").pack(anchor="w", pady=(2, 6))
+                     placeholder_text="예) 370").pack(anchor="w", pady=(2, 4))
 
         ctk.CTkLabel(frm,
                      text="사업비 = 연장(km) × 단가, 백만원 단위 10단위 반올림",
@@ -652,21 +709,26 @@ class PlanMixin:
         btns.pack(fill="x", padx=18, pady=14)
 
         def _do_export():
-            name = var_name.get().strip()
+            route = var_route.get().strip()
+            project = var_project.get().strip()
             purpose = txt_purpose.get("1.0", "end").strip()
+            content = var_content.get().strip()
             try:
                 unit_price = float(var_price.get().replace(",", "").strip())
             except Exception:
                 self._show_error("입력 오류", "단가를 숫자로 입력해 주세요.")
                 return
-            if not name:
-                self._show_error("입력 오류", "단위사업명을 입력해 주세요.")
+            if not route:
+                self._show_error("입력 오류", "노선명을 입력해 주세요.")
+                return
+            if not project:
+                self._show_error("입력 오류", "사업명을 입력해 주세요.")
                 return
             try:
                 dlg.destroy()
             except Exception:
                 pass
-            self._run_hwp_export(name, purpose, unit_price)
+            self._run_hwp_export(route, project, purpose, content, unit_price, changes)
 
         self._create_button(btns, text="내보내기", command=_do_export, width=120,
                             fg_color="#2F855A", hover_color="#276749",
@@ -674,17 +736,92 @@ class PlanMixin:
                             font=(self.font_family, 13, "bold")).pack(side="right", padx=4)
         self._create_close_button(btns, dlg.destroy, width=100).pack(side="right", padx=4)
 
-    def _build_hwp_payload(self, project_name, purpose, unit_price):
-        """운영계획변경 데이터 → HWP 양식용 구조로 변환."""
+    @staticmethod
+    def _km_str(x):
+        """km 표기: 불필요한 0 제거(152.00→'152', 264.35→'264.35')."""
+        try:
+            s = f"{float(x):.2f}".rstrip("0").rstrip(".")
+            if "." not in s:
+                s += ".0"
+            return s
+        except Exception:
+            return str(x)
+
+    @staticmethod
+    def _route_korean(name):
+        """노선명에서 한글(앞) 부분만 추출. '서산영덕선 246.9~313.5k' → '서산영덕선'."""
+        import re
+        s = re.split(r"\d", str(name or ""), 1)[0].strip()
+        return s or str(name or "").strip()
+
+    @staticmethod
+    def _lane_num(lane):
+        """차로 표기에서 숫자만. '1차로'→'1', '전차로'→'전체'."""
+        import re
+        s = str(lane or "")
+        nums = re.findall(r"\d+", s)
+        if nums:
+            return ", ".join(nums)
+        if "전" in s:
+            return "전체"
+        return s.replace("차로", "").strip()
+
+    def _avg_di_for_section(self, route_obj, direction, lane, start, end):
+        """구간 [start,end]의 평균 DI(최신 연도 기준). 데이터 없으면 None."""
+        di_data = (route_obj or {}).get("di_data", {}) or {}
+        if not di_data:
+            return None
+        years = set()
+        for vm in di_data.values():
+            try:
+                years.update(vm.keys())
+            except Exception:
+                pass
+        if not years:
+            return None
+        latest = max(years)
+        vals = []
+        for key, vm in di_data.items():
+            try:
+                d, l, skm = key
+            except Exception:
+                continue
+            if direction and d and direction != d and direction not in d and d not in direction:
+                continue
+            if not lane_conflict(lane, l):
+                continue
+            try:
+                km = float(skm)
+            except Exception:
+                continue
+            if start - 1e-9 <= km <= end + 1e-9:
+                v = vm.get(latest)
+                if v:
+                    try:
+                        vals.append(float(v))
+                    except Exception:
+                        pass
+        if not vals:
+            return None
+        return sum(vals) / len(vals)
+
+    def _build_hwp_payload(self, route_name, project_title, purpose,
+                           business_content, unit_price, changes):
+        """운영계획변경 데이터 → HWPX 양식용 구조로 변환."""
+        route_obj = next((r for r in self.routes
+                          if changes and str(r.get("name")) == str(changes[0].get("route"))), None)
+
         rows = []
         sum_orig = sum_new = sum_delta = 0
         sum_len = 0.0
-        for r in self.operation_changes:
-            cur_len = round(float(r.get("end", 0)) - float(r.get("start", 0)), 2)
+        for r in changes:
+            start = float(r.get("start", 0))
+            end = float(r.get("end", 0))
+            cur_len = round(end - start, 2)
             is_plan = (r.get("note") == "사업계획")
             if is_plan:
-                orig_len = round(float(r.get("orig_end", r.get("end", 0)))
-                                 - float(r.get("orig_start", r.get("start", 0))), 2)
+                orig_len = round(float(r.get("orig_end", end))
+                                 - float(r.get("orig_start", start)), 2)
             else:
                 orig_len = 0.0
             cur_amt = _round_amount(cur_len * unit_price)
@@ -699,23 +836,24 @@ class PlanMixin:
                 change_v = cur_amt
                 delta_v = cur_amt
 
-            # 위치 표기: 이정 + (방향)
-            direction = str(r.get("direction", "")).replace("방향", "").strip()
-            loc = f"{float(r.get('start', 0)):.1f}~{float(r.get('end', 0)):.2f}k"
+            # 위치 표기: 이정(방향)
+            direction = str(r.get("direction", "")).strip()
+            loc = f"{self._km_str(start)}~{self._km_str(end)}k"
             if direction:
-                loc += f"({direction})"
-            lane = str(r.get("lane", "")).replace("차로", "").strip()
+                loc += f"({direction.replace('방향', '').strip()})"
+
+            di_avg = self._avg_di_for_section(route_obj, direction,
+                                              r.get("lane", "전차로"), start, end)
 
             rows.append({
-                "route": str(r.get("route", "")).split()[0] if r.get("route") else "",
-                "location": loc,
-                "lane": lane,
+                "loc": loc,
+                "lane": self._lane_num(r.get("lane", "")),
                 "length": f"{cur_len:.1f}",
                 "init": _fmt_won(init_v) if init_v is not None else "-",
                 "change": _fmt_won(change_v),
-                "delta": _fmt_won(delta_v),
-                "di": "5~7",
-                "note": r.get("note", ""),
+                "delta": "-" if delta_v == 0 else _fmt_won(delta_v),
+                "di": f"{di_avg:.1f}" if di_avg is not None else "",
+                "note": "기존" if is_plan else "신규",
             })
             sum_len += cur_len
             sum_orig += (init_v or 0)
@@ -730,79 +868,53 @@ class PlanMixin:
             "delta": _fmt_won(sum_delta),
         }
 
-        # 소요예산 산출내역: 포장형식별 집계
-        budget = {}
-        for r in self.operation_changes:
-            cls = _classify_pavement(r.get("pavement"))
-            cur_len = round(float(r.get("end", 0)) - float(r.get("start", 0)), 2)
-            budget.setdefault(cls, 0.0)
-            budget[cls] += cur_len
-        budget_rows = []
-        for cls, total_len in budget.items():
-            cost = _round_amount(total_len * unit_price)
-            budget_rows.append({
-                "content": f"{cls}포장 절삭 덧씌우기(t=10cm)",
-                "qty": f"{total_len:.2f}",
-                "unit_price": _fmt_won(unit_price),
-                "cost": _fmt_won(cost),
-                "note": "야간",
-            })
-
-        budget_change = {
-            "name": project_name,
-            "init": _fmt_won(sum_orig),
-            "change": _fmt_won(sum_new),
-            "delta": _fmt_won(sum_delta),
-        }
+        if not business_content:
+            cls = _classify_pavement(changes[0].get("pavement")) if changes else "콘크리트"
+            business_content = f"{cls}포장 절삭 덧씌우기(t=10cm)"
 
         return {
-            "project_name": project_name,
+            "title_line1": route_name,
+            "title_line2": project_title,
             "purpose": purpose,
-            "unit_price": unit_price,
-            "table1_rows": rows,
-            "table1_totals": totals,
-            "table2_rows": budget_rows,
-            "table3": budget_change,
+            "business_content": business_content,
+            "unit_price_str": _fmt_won(unit_price),
+            "route_korean": self._route_korean(route_name),
+            "rows": rows,
+            "totals": totals,
         }
 
-    def _run_hwp_export(self, project_name, purpose, unit_price):
+    def _run_hwp_export(self, route_name, project_title, purpose,
+                        business_content, unit_price, changes):
         try:
-            import hwp_export
+            import hwpx_export
         except Exception:
-            log_exception("hwp_export 모듈 로드 실패")
+            log_exception("hwpx_export 모듈 로드 실패")
             self._show_error("오류", "한글 내보내기 모듈을 불러올 수 없습니다.")
             return
 
-        if not hwp_export.hwp_available():
-            self._show_error(
-                "한글 필요",
-                "한글 자동화(COM)를 사용할 수 없습니다.\n"
-                "Windows + 한글(HWP)이 설치되어 있어야 하며, pywin32 패키지가 필요합니다.\n"
-                "(pip install pywin32)")
-            return
-
         from utils import resource_path
-        template = resource_path(os.path.join("templates", "operation_plan_template.hwp"))
+        template = resource_path(os.path.join("templates", "operation_plan_template.hwpx"))
         if not os.path.exists(template):
-            template = os.path.join(get_user_data_dir(), "templates", "operation_plan_template.hwp")
+            template = os.path.join(get_user_data_dir(), "templates", "operation_plan_template.hwpx")
         if not os.path.exists(template):
-            self._show_error("양식 없음", "운영계획변경 한글 양식 파일을 찾을 수 없습니다.")
+            self._show_error("양식 없음", "운영계획변경 한글 양식 파일(.hwpx)을 찾을 수 없습니다.")
             return
 
         out_path = filedialog.asksaveasfilename(
-            title="운영계획변경 저장", defaultextension=".hwp",
-            filetypes=[("한글 파일", "*.hwp")],
-            initialfile=f"{project_name}_운영계획변경.hwp",
+            title="운영계획변경 저장", defaultextension=".hwpx",
+            filetypes=[("한글 파일", "*.hwpx")],
+            initialfile=f"{self._route_korean(route_name)}_운영계획변경.hwpx",
             parent=self,
         )
         if not out_path:
             return
 
-        payload = self._build_hwp_payload(project_name, purpose, unit_price)
+        payload = self._build_hwp_payload(route_name, project_title, purpose,
+                                          business_content, unit_price, changes)
         try:
-            hwp_export.export_operation_change(template, out_path, payload)
+            hwpx_export.export_operation_change(template, out_path, payload)
         except Exception as e:
-            log_exception("HWP 내보내기 실패")
+            log_exception("HWPX 내보내기 실패")
             self._show_error("내보내기 실패", f"한글 양식 작성 중 오류가 발생했습니다.\n{e}")
             return
         self._show_info("완료", f"한글 양식을 작성했습니다.\n{out_path}")
