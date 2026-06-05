@@ -983,14 +983,12 @@ class AnalysisMixin:
                 "3. [포장상태 판단 지표 선택]\n"
                 "   ─ 일반 공법 (덧씌우기 등)\n"
                 "     · DI 지수 5.0 이상인 100m 셀이 하나라도 있으면 하자 우려\n"
-                "   ─ 표면개량 카테고리 공법\n"
-                "     · RD(소성변형) ≥ 5.0 또는 IRI(평탄성) ≥ 3.5 인 셀 존재 시 하자 우려\n\n"
+                "   ─ 표면개량 카테고리 공법은 대상에서 제외\n\n"
                 "4. [검사 연도 범위]\n"
                 "   - 보수연도 기준 +2년 ~ +4년의 포장상태 데이터를 확인\n"
                 "   - 예) 2022년 보수 → 2024, 2025, 2026년 데이터 검토\n\n"
                 "5. [하자발생우려근거 표기]\n"
                 "   - 불량 셀 중 상위 2개 위치·수치·연도를 근거에 표시\n"
-                "   - 표면개량 공법은 RD/IRI 각각 구분하여 병기\n"
             ))
             txt.configure(state="disabled")
             self._create_close_button(info, info.destroy, width=100, height=32).pack(pady=(0, 12))
@@ -1070,8 +1068,6 @@ class AnalysisMixin:
             for route in self.routes:
                 rname     = route.get("name", "")
                 di_data   = route.get("di_data",   {})
-                rd_data   = route.get("rd_data",   {})
-                iri_data  = route.get("iri_data",  {})
                 entries   = route.get("entries", [])
 
                 for entry in entries:
@@ -1095,6 +1091,10 @@ class AnalysisMixin:
                     method_cat = METHOD_CATEGORY_MAP.get(method, "")
                     warranty_period = get_method_warranty_period(method)
 
+                    # 표면개량 계열은 하자발생 우려구간 대상에서 제외
+                    if method_cat == "표면개량":
+                        continue
+
                     # 하자보증기간이 이미 만료된 경우 제외
                     if cur_year > work_year + warranty_period:
                         continue
@@ -1105,16 +1105,8 @@ class AnalysisMixin:
                     if eff_end <= eff_start + 1e-9:
                         continue  # 구간이 200m 미만이면 검사 대상 없음
 
-                    is_surface = (method_cat == "표면개량")
-                    if is_surface:
-                        # 표면개량 계열: RD(≥5) 또는 IRI(≥3.5) 기준
-                        check_sets = [
-                            (rd_data,  "RD",  5.0),
-                            (iri_data, "IRI", 3.5),
-                        ]
-                    else:
-                        # 그 외: DI 지수 5.0 이상
-                        check_sets = [(di_data, "DI", 5.0)]
+                    # DI 지수 5.0 이상 셀 검사 (표면개량 계열은 위에서 제외됨)
+                    check_sets = [(di_data, "DI", 5.0)]
 
                     bad_cells = []
                     for data_dict, indicator, threshold in check_sets:
