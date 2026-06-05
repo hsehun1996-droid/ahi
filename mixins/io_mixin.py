@@ -84,6 +84,8 @@ class IOMixin:
                 dir1 = dirs[0]
                 dir2 = dirs[1 if len(dirs) > 1 else 0]
                 for it in route.get("entries", []):
+                    if it.get("plan"):
+                        continue  # 사업계획 구간은 all_business_plan.csv에 별도 저장
                     wrote_any = True
                     writer.writerow([
                         route.get("name", ""), route.get("start_km", 0.0), route.get("end_km", 0.0),
@@ -919,11 +921,13 @@ class IOMixin:
                         ])
                     else:
                         for it in entries:
+                            if it.get("plan"):
+                                continue  # 사업계획 구간은 all_business_plan.csv에 별도 저장
                             wd = str(it.get("work_date") or "")
                             year = wd[:4] if len(wd) >= 4 else ""
                             writer.writerow([
                                 route.get("name", ""), route.get("start_km", 0.0), route.get("end_km", 0.0),
-                                it.get("start", 0.0), it.get("end", 0.0), it.get("method", ""), 
+                                it.get("start", 0.0), it.get("end", 0.0), it.get("method", ""),
                                 it.get("direction", ""), it.get("lane", ""), wd, year, it.get("ts", ""),
                                 "entry", dir1, dir2
                             ])
@@ -1219,6 +1223,8 @@ class IOMixin:
                 ))
 
                 for it in route.get("entries", []):
+                    if it.get("plan"):
+                        continue  # 사업계획 구간은 캐시 대신 all_business_plan.csv에 저장
                     entry_rows.append((
                         route.get("name", ""), "main",
                         float(it.get("start", 0.0)), float(it.get("end", 0.0)),

@@ -911,11 +911,18 @@ class UIMixin:
         # 구분선
         ctk.CTkFrame(nav_bar, width=1, height=18, fg_color=NAV_BORDER).pack(side="left", padx=10, pady=14)
 
-        # 개량 우선순위 (강조)
-        self._create_button(nav_bar, text="개량 우선순위",
-                      command=self.on_improvement_priority,
+        # 사업계획 (강조) - 개량 우선순위 산정 + 사업계획 작성/확정
+        self._create_button(nav_bar, text="사업계획",
+                      command=self.on_business_plan,
                       fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
-                      text_color="#FFFFFF", width=156, height=36, corner_radius=10,
+                      text_color="#FFFFFF", width=120, height=36, corner_radius=10,
+                      font=(self.font_family, 14, "bold")).pack(side="left", padx=3, pady=8)
+
+        # 운영계획변경 (한글 양식 작성)
+        self._create_button(nav_bar, text="운영계획변경",
+                      command=self.on_operation_plan_change,
+                      fg_color="#2F855A", hover_color="#276749",
+                      text_color="#FFFFFF", width=140, height=36, corner_radius=10,
                       font=(self.font_family, 14, "bold")).pack(side="left", padx=3, pady=8)
 
         # 하자발생 우려구간

@@ -16,6 +16,8 @@ datas = [
     (os.path.join(SPECPATH, "concept art"), "concept art"),
     # UI/PDF 한글 폰트
     (os.path.join(SPECPATH, "fonts"), "fonts"),
+    # 운영계획변경 한글(HWP) 양식 템플릿
+    (os.path.join(SPECPATH, "templates"), "templates"),
 ]
 
 hiddenimports = [
@@ -42,6 +44,12 @@ hiddenimports = [
     "tkinter.font",
     "darkdetect",
     "packaging",
+    # 운영계획변경 한글(HWP) 자동화 (방법 A: COM)
+    "hwp_export",
+    "win32com",
+    "win32com.client",
+    "pythoncom",
+    "pywintypes",
 ]
 
 a = Analysis(

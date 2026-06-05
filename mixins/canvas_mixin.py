@@ -157,7 +157,9 @@ class CanvasMixin:
                         tc = "#FFFFFF" if (rv*299 + gv*587 + bv*114) / 1000 < 140 else "#000000"
                     except Exception:
                         tc = "#FFFFFF"
-                    canvas.create_text((sx1+sx2)/2, (y1+y2)/2, text=f"'{year[2:]}",
+                    # 사업계획으로 확정된 구간은 연도 대신 '계획'으로 표기
+                    label_txt = "계획" if it.get("plan") else f"'{year[2:]}"
+                    canvas.create_text((sx1+sx2)/2, (y1+y2)/2, text=label_txt,
                                        fill=tc, font=(self.font_family, CANVAS_FONT_S), tags=("entry_label",))
                 if item_map is not None:
                     item_map[item_id] = idx
@@ -1251,8 +1253,9 @@ class CanvasMixin:
                     tc = "#FFFFFF" if (rv*299 + gv*587 + bv*114)/1000 < 140 else "#000000"
                 except Exception:
                     tc = "#FFFFFF"
+                detail_label = "계획" if it.get("plan") else f"'{year[2:]}"
                 detail_canvas.create_text(
-                    (x1+x2)/2, (y1+y2)/2, text=f"'{year[2:]}",
+                    (x1+x2)/2, (y1+y2)/2, text=detail_label,
                     fill=tc, font=(self.font_family, fs_small), anchor="center",
                     tags=("branch_label",))
 

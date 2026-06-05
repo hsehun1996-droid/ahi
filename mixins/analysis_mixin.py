@@ -73,12 +73,27 @@ class AnalysisMixin:
     def on_manage_iri(self):
         self._open_condition_data_dialog('iri_data', 'IRI 등급', value_type=float, redraw_on_save=False)
 
-    def on_improvement_priority(self):
-        """개량 우선순위 선정 (고도화: 구조물/이력 실좌표 정밀 절단 Trimming + 방향 매칭 개선)"""
+    def on_improvement_priority(self, apply_label=None, apply_callback=None,
+                                exclude_sections=None, default_year=None):
+        """개량 우선순위 선정 (고도화: 구조물/이력 실좌표 정밀 절단 Trimming + 방향 매칭 개선)
+
+        매개변수(선택):
+            apply_label    : 지정하면 '선택 적용' 버튼을 추가하고 그 텍스트로 사용
+            apply_callback : 선택 적용 시 호출. callback(items:list, plan_year:str)
+            exclude_sections: 후보에서 제외할 구간 목록. 각 항목 dict {route,direction,lane,start,end}
+            default_year   : 계획 연도 입력칸 기본값(문자열)
+        """
+        # 다른 컨텍스트(사업계획/운영계획변경)에서 재호출될 수 있으므로
+        # 기존 창이 열려 있으면 닫고 새로 구성한다.
         if hasattr(self, 'priority_window') and self.priority_window is not None and self.priority_window.winfo_exists():
-            self.priority_window.lift()
-            self.priority_window.focus_force()
-            return
+            if apply_callback is None:
+                self.priority_window.lift()
+                self.priority_window.focus_force()
+                return
+            try:
+                self.priority_window.destroy()
+            except Exception:
+                pass
 
         # 1. 윈도우 설정
         dlg = self._create_popup_window(self)
@@ -96,7 +111,8 @@ class AnalysisMixin:
         ctk.CTkLabel(top_frame, text="계획 연도:", font=(self.font_family, 14, "bold")).pack(side="left")
         
         current_yr = int(datetime.now().strftime("%Y"))
-        var_plan_year = tk.StringVar(value=str(current_yr + 1))
+        _def_year = str(default_year) if default_year else str(current_yr + 1)
+        var_plan_year = tk.StringVar(value=_def_year)
         ent_year = ctk.CTkEntry(top_frame, textvariable=var_plan_year, width=60, font=(self.font_family, 12))
         ent_year.pack(side="left", padx=5)
         
@@ -229,6 +245,7 @@ class AnalysisMixin:
 
         last_calculated_data = []
         active_filters = {}
+        tree_iid_map = {}   # tree iid(str) -> 원본 item dict
 
         def _fmt_dir(d):
             return d.replace("방향", "").strip()
@@ -266,13 +283,16 @@ class AnalysisMixin:
 
         def refresh_tree():
             for item in tree.get_children(): tree.delete(item)
+            tree_iid_map.clear()
             kwd = var_filter.get().lower()
-            for item in last_calculated_data:
+            for i, item in enumerate(last_calculated_data):
                 row_vals = {c: get_formatted_val(item, c) for c in cols}
                 if kwd and kwd not in " ".join(row_vals.values()).lower(): continue
                 if any(row_vals[c] not in active_filters[c] for c in active_filters): continue
                 tier_tag = "tier1" if item['tier'] == 1 else ("tier2" if item['tier'] == 2 else "tier3")
-                tree.insert("", "end", values=[row_vals[c] for c in cols], tags=(tier_tag,))
+                iid = f"row{i}"
+                tree.insert("", "end", iid=iid, values=[row_vals[c] for c in cols], tags=(tier_tag,))
+                tree_iid_map[iid] = item
         
         tree.tag_configure("tier1", background="#2D3748", foreground="white")
         tree.tag_configure("tier2", background="#285E61", foreground="white")
@@ -722,6 +742,21 @@ class AnalysisMixin:
             for i, c in enumerate(all_results):
                 c['rank'] = i + 1
 
+            # 운영계획변경 등에서 특정 구간(사업계획 지정 구간)을 후보에서 제외
+            if exclude_sections:
+                def _is_excluded(r):
+                    for ex in exclude_sections:
+                        if (str(r.get('route')) == str(ex.get('route'))
+                                and str(r.get('direction')) == str(ex.get('direction'))
+                                and str(r.get('lane')) == str(ex.get('lane'))
+                                and intervals_overlap(float(r.get('start', 0)), float(r.get('end', 0)),
+                                                      float(ex.get('start', 0)), float(ex.get('end', 0)))):
+                            return True
+                    return False
+                all_results = [r for r in all_results if not _is_excluded(r)]
+                for i, c in enumerate(all_results):
+                    c['rank'] = i + 1
+
             nonlocal last_calculated_data
             last_calculated_data = all_results
             active_filters.clear()
@@ -733,6 +768,28 @@ class AnalysisMixin:
 
         btn_calc = self._create_button(top_frame, text="우선순위 산정", command=calculate_priority, width=120, font=(self.font_family, 12, "bold"), fg_color="#3182CE")
         btn_calc.pack(side="left", padx=10)
+
+        # 선택 적용 버튼 (사업계획/운영계획변경에서 호출 시)
+        if apply_label and callable(apply_callback):
+            def _on_apply_selection():
+                sel = tree.selection()
+                items = [tree_iid_map[i] for i in sel if i in tree_iid_map]
+                if not items:
+                    self._show_info("알림", "적용할 구간을 선택해 주세요.")
+                    return
+                # 닫기 전에 선택 항목을 깊은 복사하여 전달 (원본 변형 방지)
+                payload = [dict(it) for it in items]
+                plan_year = var_plan_year.get()
+                try:
+                    dlg.destroy()
+                except Exception:
+                    pass
+                self.priority_window = None
+                apply_callback(payload, plan_year)
+            self._create_button(top_frame, text=apply_label, command=_on_apply_selection,
+                                width=140, font=(self.font_family, 12, "bold"),
+                                fg_color=PRIMARY_BLUE, hover_color=PRIMARY_BLUE_HOVER,
+                                text_color="#FFFFFF").pack(side="left", padx=6)
         btn_search = self._create_button(filter_frame, text="검색", command=refresh_tree, width=80)
         btn_search.pack(side="left", padx=5)
         ent_filter.bind("<Return>", lambda e: refresh_tree())
