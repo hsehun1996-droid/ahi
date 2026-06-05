@@ -170,6 +170,8 @@ class SelectMixin:
             c.bind("<Button-1>", self._on_selection_press)
             c.bind("<B1-Motion>", self._on_selection_motion)
             c.bind("<ButtonRelease-1>", self._on_selection_release)
+            # 선택 중 더블클릭으로 이력 상세창이 열리지 않도록 비활성화
+            c.bind("<Double-Button-1>", lambda e: "break")
 
     def _unbind_selection_events(self):
         for r in self.routes:
@@ -180,6 +182,7 @@ class SelectMixin:
                 c.bind("<Button-1>", lambda e: e.widget.focus_set())
                 c.unbind("<B1-Motion>")
                 c.unbind("<ButtonRelease-1>")
+                c.bind("<Double-Button-1>", self.on_canvas_double_click)
                 c.delete("sel_live")
             except Exception:
                 pass
@@ -507,11 +510,11 @@ class SelectMixin:
                     y2 = top + n * seg_h
                 lane_str = f"{n}차로"
                 for a, b in self._selection_blocked_intervals(route, direction, lane_str):
+                    # 어둡게 가리지 않고 빗금만 덧대 '선택불가'를 표시
+                    # (DI 색상·보수이력 공법 색상이 그대로 보이도록)
                     self._draw_band_px(
                         canvas, route, a, b, y1 + 1, y2 - 1,
-                        dict(fill="#374151", stipple="gray50", outline="",
-                             tags=("sel_blocked",)),
-                        hatch=True, hatch_color="#D1D5DB")
+                        None, hatch=True, hatch_color="#475569")
 
         # 선택된 구간(초록)
         for sel in self.schematic_selections.get(route["name"], []):
@@ -524,7 +527,6 @@ class SelectMixin:
                 dict(fill="#22C55E", stipple="gray50", outline="#15803D",
                      width=2, tags=("sel_chosen",)))
 
-        canvas.tag_raise("sel_blocked")
         canvas.tag_raise("sel_chosen")
 
     # ───────────────────────────── 컨트롤 패널 ─────────────────────────────
@@ -548,11 +550,11 @@ class SelectMixin:
             panel, justify="left", anchor="w", wraplength=440,
             font=(self.font_family, 12), text_color="#3A4A60",
             text=(
-                "• 색상은 DI 지수(포장상태불량률)입니다. 진할수록 불량합니다.\n"
+                "• 바탕색은 DI 지수(포장상태불량률, 진할수록 불량), 보수이력은 공법 색상으로 함께 표시됩니다.\n"
                 "• 상행/하행 바의 차로를 가로로 드래그하면 그 차로 구간이 선택됩니다.\n"
-                "• 드래그 안에 선택불가 구간이 있으면 자동으로 잘라냅니다.\n"
+                "• 보수이력·교량/터널 등 빗금(선택불가) 구간은 드래그 시 자동으로 잘라냅니다.\n"
                 "• Shift 를 누른 채 드래그하면 기존 선택에 추가됩니다.\n"
-                "• 선택한 구간을 클릭하면 선택이 해제됩니다."
+                "• 선택한 구간을 클릭하면 해제, ESC 를 누르면 전체 해제됩니다."
             ),
         ).pack(anchor="w", padx=18, pady=(0, 8))
 
@@ -562,7 +564,7 @@ class SelectMixin:
                      font=(self.font_family, 13, "bold")).pack(side="left")
         ctk.CTkLabel(legend, text="선택됨", font=(self.font_family, 11),
                      text_color="#3A4A60").pack(side="left", padx=(2, 14))
-        ctk.CTkLabel(legend, text="▦", text_color="#6B7280",
+        ctk.CTkLabel(legend, text="▦", text_color="#475569",
                      font=(self.font_family, 13, "bold")).pack(side="left")
         ctk.CTkLabel(legend, text="선택불가(보수이력·교량·터널)",
                      font=(self.font_family, 11),
@@ -588,7 +590,8 @@ class SelectMixin:
             text="취소").pack(side="right", padx=4)
 
         panel.protocol("WM_DELETE_WINDOW", self._cancel_schematic_selection)
-        panel.bind("<Escape>", lambda e: self._cancel_schematic_selection())
+        # ESC = 선택 전체 해제(모드 유지)는 전역 핸들러(exit_magnifier_mode)가 처리.
+        # 모드 종료는 '취소' 버튼.
 
         try:
             # 모식도(중앙 바)를 가리지 않도록 우측 상단에 배치
