@@ -1092,7 +1092,7 @@ class AnalysisMixin:
                     warranty_period = get_method_warranty_period(method)
 
                     # 표면개량 계열은 하자발생 우려구간 대상에서 제외
-                    if method_cat == "표면개량":
+                    if method_cat == "표면개량" or "표면개량" in method:
                         continue
 
                     # 하자보증기간이 이미 만료된 경우 제외
