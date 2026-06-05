@@ -1,0 +1,22 @@
+# 고속도로 포장유지보수 이력 관리 프로그램 — 빌드/실행 의존성
+#
+# 설치:  pip install -r requirements.txt
+# (한글 양식 자동 작성 기능은 Windows + 한글(HWP) 설치 환경에서만 동작)
+
+customtkinter
+CTkMessagebox
+darkdetect
+packaging
+
+# PDF 내보내기
+Pillow
+reportlab
+
+# Excel 내보내기
+openpyxl
+
+# 한글(HWP) 양식 자동 작성 (Windows 전용) — 운영계획변경
+pywin32 ; sys_platform == "win32"
+
+# EXE 빌드 도구
+pyinstaller
