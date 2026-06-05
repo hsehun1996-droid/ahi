@@ -59,6 +59,10 @@ HEADER_XML = "Contents/header.xml"
 TITLE_LINE2_CHARPR = "25"
 TITLE_LINE2_HEIGHT = "2200"
 
+# 표0(포장개량 세부위치) 데이터 행 구성
+TBL0_FIRST_DATA_ROW = 3   # 데이터 시작 rowAddr (0,1=머리글, 2=계)
+TBL0_DATA_ROWS = 7        # 템플릿 기본 데이터 행 수(=7개소). 초과 시 자동 추가
+
 
 # ── XML 헬퍼 ────────────────────────────────────────────────────────────
 def _tc_addr(tc):
@@ -183,13 +187,51 @@ def _fill_purpose(root, payload):
 
 
 def _fill_table0(tbl, payload):
-    rows = payload.get("rows", [])[:7]
+    rows = payload.get("rows", [])
     totals = payload.get("totals", {})
 
     def put(col, row, val):
         tc = _find_cell(tbl, col, row)
         if tc is not None:
             _set_cell(tc, val)
+
+    n = len(rows)
+    total_data_rows = max(TBL0_DATA_ROWS, n)
+    extra = total_data_rows - TBL0_DATA_ROWS
+
+    # 개소가 7개를 넘으면 표준 데이터 행을 복제해 자동으로 행 추가
+    if extra > 0:
+        src = None  # 복제 원본: 일반 데이터 행(rowAddr=4, col1~col8)
+        for tr in tbl.findall(HP + "tr"):
+            tc = tr.find(HP + "tc")
+            ca = tc.find(HP + "cellAddr") if tc is not None else None
+            if ca is not None and ca.get("rowAddr") == str(TBL0_FIRST_DATA_ROW + 1):
+                src = tr
+                break
+        children = list(tbl)
+        tr_idxs = [i for i, c in enumerate(children) if c.tag == HP + "tr"]
+        if src is not None and tr_idxs:
+            last_tr_idx = max(tr_idxs)
+            for k in range(extra):
+                new_addr = TBL0_FIRST_DATA_ROW + TBL0_DATA_ROWS + k  # 10, 11, ...
+                newtr = copy.deepcopy(src)
+                for tc in newtr.findall(HP + "tc"):
+                    ca = tc.find(HP + "cellAddr")
+                    if ca is not None:
+                        ca.set("rowAddr", str(new_addr))
+                    _set_cell(tc, "")  # 복제 셀 비우기
+                tbl.insert(last_tr_idx + 1 + k, newtr)
+            try:
+                tbl.set("rowCnt", str(int(tbl.get("rowCnt", "10")) + extra))
+            except Exception:
+                pass
+
+    # 노선명 병합셀(row3 col0)의 rowSpan = 전체 데이터 행 수
+    cell0 = _find_cell(tbl, 0, TBL0_FIRST_DATA_ROW)
+    if cell0 is not None:
+        span = cell0.find(HP + "cellSpan")
+        if span is not None:
+            span.set("rowSpan", str(total_data_rows))
 
     # 계 행(row2): col0='계'(유지), col1=개소수, col3=연장계, col4~6=사업비계
     put(1, 2, totals.get("count", ""))
@@ -199,11 +241,11 @@ def _fill_table0(tbl, payload):
     put(6, 2, totals.get("delta", ""))
 
     # 노선명(병합셀, row3 col0) — 한글 부분만
-    put(0, 3, payload.get("route_korean", ""))
+    put(0, TBL0_FIRST_DATA_ROW, payload.get("route_korean", ""))
 
-    # 데이터 7행(row3~row9): col1~col8
-    for i in range(7):
-        row = 3 + i
+    # 데이터 행: col1~col8
+    for i in range(total_data_rows):
+        row = TBL0_FIRST_DATA_ROW + i
         r = rows[i] if i < len(rows) else None
         if r is None:
             vals = ["", "", "", "", "", "", "", ""]
