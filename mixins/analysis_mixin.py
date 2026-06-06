@@ -1214,6 +1214,252 @@ class AnalysisMixin:
         # 창 열릴 때 자동 분석
         dlg.after(100, calculate_defects)
 
+    # ── 하자점검 헬퍼 메서드 ──────────────────────────────────────────
+
+    def _make_inspect_key(self, item):
+        """inspect_data 항목으로부터 점검기록 고유 키 생성"""
+        return (f"{item['route']}|{item['_start']:.3f}|{item['_end']:.3f}|"
+                f"{item.get('direction','')}|{item.get('lane','')}|"
+                f"{item['method']}|{item['work_year']}")
+
+    def _get_available_checks(self, check_year, first_year, last_year):
+        """해당 연도에 활성화(체크 가능)한 점검 항목 딕셔너리 반환"""
+        is_first = (check_year == first_year)
+        is_last  = (check_year == last_year)
+        is_only  = (first_year == last_year)
+        if is_only:
+            return {"initial": True,  "regular_h1": False, "regular_h2": False, "expire": True}
+        if is_first:
+            return {"initial": True,  "regular_h1": False, "regular_h2": True,  "expire": False}
+        if is_last:
+            return {"initial": False, "regular_h1": True,  "regular_h2": False, "expire": True}
+        return     {"initial": False, "regular_h1": True,  "regular_h2": True,  "expire": False}
+
+    def _compute_inspection_status(self, item, cur_year, cur_month):
+        """현재 연도/월 기준 점검 현황 문자열 반환"""
+        work_year   = item["work_year"]
+        expire_year = item["expire_year"]
+        first_year  = work_year + 1
+        last_year   = expire_year
+        if cur_year < first_year or cur_year > last_year:
+            return "-"
+        key = self._make_inspect_key(item)
+        yr_rec = self._defect_inspection_records.get(key, {}).get(cur_year, {})
+        is_first = (cur_year == first_year)
+        is_last  = (cur_year == last_year)
+        is_only  = (first_year == last_year)
+        half = 1 if cur_month <= 6 else 2
+        parts = []
+        if half == 1:
+            if is_first or is_only:
+                parts.append("최초하자점검 완료" if yr_rec.get("initial") else "최초하자점검 필요")
+            else:
+                parts.append("상반기 정기점검 완료" if yr_rec.get("regular_h1") else "상반기 정기점검 필요")
+        else:
+            # 상반기 미완료 여부 먼저 확인
+            if is_first or is_only:
+                if not yr_rec.get("initial"):
+                    parts.append("최초하자점검 미완료")
+            else:
+                if not yr_rec.get("regular_h1"):
+                    parts.append("상반기 정기점검 미완료")
+            # 하반기 할 일
+            if is_only or is_last:
+                parts.append("하자만료점검 완료" if yr_rec.get("expire") else "하자만료점검 필요")
+            else:
+                parts.append("하반기 정기점검 완료" if yr_rec.get("regular_h2") else "하반기 정기점검 필요")
+        return " / ".join(parts) if parts else "-"
+
+    def _load_inspection_records_csv(self):
+        """all_defect_inspection.csv 로드 → {key: {year: {field: bool}}}"""
+        import csv as _csv
+        fpath = os.path.join(get_user_data_dir(), "all_defect_inspection.csv")
+        records = {}
+        if not os.path.exists(fpath):
+            return records
+        try:
+            with open(fpath, "r", encoding="utf-8-sig", newline="") as f:
+                for row in _csv.DictReader(f):
+                    try:
+                        sf = float(row.get("section_start", ""))
+                        ef = float(row.get("section_end", ""))
+                        wy = int(row.get("work_year", ""))
+                        cy = int(row.get("check_year", ""))
+                    except (ValueError, TypeError):
+                        continue
+                    key = (f"{row.get('route','')}|{sf:.3f}|{ef:.3f}|"
+                           f"{row.get('direction','')}|{row.get('lane','')}|"
+                           f"{row.get('method','')}|{wy}")
+                    records.setdefault(key, {})[cy] = {
+                        "initial":    row.get("initial", "").lower() in ("true", "1", "yes"),
+                        "regular_h1": row.get("regular_h1", "").lower() in ("true", "1", "yes"),
+                        "regular_h2": row.get("regular_h2", "").lower() in ("true", "1", "yes"),
+                        "expire":     row.get("expire", "").lower() in ("true", "1", "yes"),
+                    }
+        except Exception:
+            log_exception("하자점검 기록 로드 실패")
+        return records
+
+    def _save_inspection_records_csv(self):
+        """_defect_inspection_records → all_defect_inspection.csv 저장"""
+        import csv as _csv
+        fpath = os.path.join(get_user_data_dir(), "all_defect_inspection.csv")
+        try:
+            with open(fpath, "w", encoding="utf-8-sig", newline="") as f:
+                writer = _csv.DictWriter(f, fieldnames=[
+                    "route", "section_start", "section_end", "direction", "lane",
+                    "method", "work_year", "check_year",
+                    "initial", "regular_h1", "regular_h2", "expire",
+                ])
+                writer.writeheader()
+                for key, year_dict in self._defect_inspection_records.items():
+                    parts = key.split("|")
+                    if len(parts) != 7:
+                        continue
+                    route, s, e, direction, lane, method, wy = parts
+                    for cy, checks in sorted(year_dict.items()):
+                        writer.writerow({
+                            "route": route, "section_start": s, "section_end": e,
+                            "direction": direction, "lane": lane,
+                            "method": method, "work_year": wy, "check_year": cy,
+                            "initial":    checks.get("initial", False),
+                            "regular_h1": checks.get("regular_h1", False),
+                            "regular_h2": checks.get("regular_h2", False),
+                            "expire":     checks.get("expire", False),
+                        })
+        except Exception:
+            log_exception("하자점검 기록 저장 실패")
+
+    def _open_inspect_record_popup(self, item, parent_dlg, refresh_tree_cb):
+        """연도별 하자점검 기록 입력 팝업"""
+        work_year   = item["work_year"]
+        expire_year = item["expire_year"]
+        warranty    = item["warranty"]
+        first_year  = work_year + 1
+        last_year   = expire_year
+        years       = list(range(first_year, last_year + 1))
+
+        popup_h = min(600, 220 + len(years) * 52)
+        popup = self._create_popup_window(parent_dlg)
+        popup.title("")
+        popup.geometry(f"780x{popup_h}")
+        popup.transient(parent_dlg)
+        popup.grab_set()
+        popup.lift()
+        popup.focus_force()
+
+        # 헤더 바
+        hdr = ctk.CTkFrame(popup, fg_color="#1A3A5C", corner_radius=0)
+        hdr.pack(fill="x")
+        ctk.CTkLabel(hdr, text="하자점검 기록 입력",
+                     font=(self.font_family, 13, "bold"),
+                     text_color="white").pack(side="left", padx=16, pady=10)
+
+        # 구간 정보
+        info_bar = ctk.CTkFrame(popup, fg_color="#EEF4FB", corner_radius=0)
+        info_bar.pack(fill="x")
+        ctk.CTkLabel(
+            info_bar,
+            text=(f"  노선: {item['route']}   이정: {item['section']}   방향: {item['direction']}"
+                  f"   차로: {item['lane']}   공법: {item['method']}"
+                  f"   보수연도: {work_year}년  |  하자기간: {warranty}년  |  만료연도: {expire_year}년"),
+            font=(self.font_family, 10),
+            text_color="#1A3A5C",
+            justify="left",
+        ).pack(anchor="w", padx=12, pady=6)
+
+        ctk.CTkFrame(popup, height=1, fg_color="#C8D7EA").pack(fill="x")
+
+        # 안내 문구
+        note_bar = ctk.CTkFrame(popup, fg_color="#FFFBEA", corner_radius=0)
+        note_bar.pack(fill="x")
+        ctk.CTkLabel(
+            note_bar,
+            text=("  ※ 체크박스 클릭 시 즉시 저장됩니다.  "
+                  "회색 '해당없음'은 해당 연도에 수행하지 않는 항목입니다."),
+            font=(self.font_family, 9),
+            text_color="#7B6200",
+        ).pack(anchor="w", padx=8, pady=4)
+
+        ctk.CTkFrame(popup, height=1, fg_color="#C8D7EA").pack(fill="x")
+
+        # 컬럼 헤더
+        COL_W = [70, 165, 165, 165, 165]
+        COL_L = ["연도", "최초하자점검", "상반기 정기점검", "하반기 정기점검", "하자만료점검"]
+        th = ctk.CTkFrame(popup, fg_color="#D8E8F8", corner_radius=0)
+        th.pack(fill="x")
+        for lbl, w in zip(COL_L, COL_W):
+            ctk.CTkLabel(th, text=lbl, font=(self.font_family, 10, "bold"),
+                         text_color="#1A3A5C", width=w, anchor="center").pack(side="left", pady=6)
+
+        scroll = ctk.CTkScrollableFrame(popup, fg_color="white")
+        scroll.pack(fill="both", expand=True)
+
+        key = self._make_inspect_key(item)
+        CHECK_FIELDS = [
+            ("initial",    "최초하자점검"),
+            ("regular_h1", "상반기 정기"),
+            ("regular_h2", "하반기 정기"),
+            ("expire",     "하자만료점검"),
+        ]
+
+        def make_toggle(k, yr, fd, v):
+            def _cb():
+                self._defect_inspection_records.setdefault(k, {}).setdefault(yr, {})[fd] = v.get()
+                self._save_inspection_records_csv()
+                refresh_tree_cb()
+            return _cb
+
+        for ri, y in enumerate(years):
+            avail = self._get_available_checks(y, first_year, last_year)
+            bg = "#F5F9FF" if ri % 2 == 0 else "#FFFFFF"
+            row_f = ctk.CTkFrame(scroll, fg_color=bg, corner_radius=0)
+            row_f.pack(fill="x")
+            ctk.CTkLabel(row_f, text=f"{y}년",
+                         font=(self.font_family, 11, "bold"),
+                         text_color="#1A3A5C",
+                         width=COL_W[0], anchor="center").pack(side="left", pady=8)
+            for (fd, _lbl), w in zip(CHECK_FIELDS, COL_W[1:]):
+                cell = ctk.CTkFrame(row_f, fg_color="transparent", width=w)
+                cell.pack(side="left")
+                cell.pack_propagate(False)
+                if avail.get(fd, False):
+                    cur_val = self._defect_inspection_records.get(key, {}).get(y, {}).get(fd, False)
+                    var = tk.BooleanVar(value=cur_val)
+                    ctk.CTkCheckBox(
+                        cell, text="완료",
+                        variable=var,
+                        command=make_toggle(key, y, fd, var),
+                        font=(self.font_family, 10),
+                        checkbox_width=18, checkbox_height=18,
+                        border_width=2,
+                        fg_color=PRIMARY_BLUE,
+                        hover_color=PRIMARY_BLUE_HOVER,
+                        border_color="#AFC4DE",
+                        text_color=TITLE_TEXT,
+                    ).pack(pady=6, padx=4)
+                else:
+                    ctk.CTkLabel(cell, text="해당없음",
+                                 font=(self.font_family, 9),
+                                 text_color="#BBBBBB").pack(pady=8, padx=4)
+
+        # 하단 버튼
+        btn_f = ctk.CTkFrame(popup, fg_color="transparent")
+        btn_f.pack(fill="x", padx=12, pady=8)
+        self._create_button(
+            btn_f, text="모식도 이동",
+            command=lambda: (popup.destroy(),
+                             self.navigate_to_section(
+                                 item["route"], item["_start"], item["_end"],
+                                 direction=item.get("direction"),
+                                 lane=item.get("lane"),
+                             )),
+            fg_color="#2D3748", width=100, height=30,
+        ).pack(side="right", padx=(0, 8))
+        self._create_close_button(btn_f, popup.destroy, width=80, height=30).pack(side="right")
+
+    # ── 하자점검 창 ────────────────────────────────────────────────────
+
     def on_defect_inspection(self):
         """하자점검 창을 엽니다.
 
@@ -1222,6 +1468,7 @@ class AnalysisMixin:
         금년에 하자기간이 만료되는 구간(잔여 0년)을 최상단에 두어,
         만료가 임박한 구간부터 보이도록 정렬합니다.
         노선/이정/방향/공법 등 컬럼별 필터를 제공합니다.
+        더블클릭 시 연도별 점검기록 입력 팝업이 열립니다.
         """
         if hasattr(self, "_defect_inspect_window") and self._defect_inspect_window is not None \
                 and self._defect_inspect_window.winfo_exists():
@@ -1229,15 +1476,20 @@ class AnalysisMixin:
             self._defect_inspect_window.focus_force()
             return
 
+        # 점검 기록 로드
+        self._defect_inspection_records = self._load_inspection_records_csv()
+
         dlg = self._create_popup_window(self)
         self._defect_inspect_window = dlg
         dlg.title("")
-        dlg.geometry("1280x640")
+        dlg.geometry("1400x660")
         dlg.transient(self)
         dlg.lift()
         dlg.focus_force()
 
-        cur_year = datetime.now().year
+        now = datetime.now()
+        cur_year  = now.year
+        cur_month = now.month
 
         # 상단 제목/건수 행
         top = ctk.CTkFrame(dlg, fg_color="transparent")
@@ -1254,7 +1506,7 @@ class AnalysisMixin:
         def show_algorithm_info():
             info = self._create_popup_window(dlg)
             info.title("")
-            info.geometry("720x420")
+            info.geometry("760x500")
             info.transient(dlg)
             info.grab_set()
             info.lift()
@@ -1267,13 +1519,22 @@ class AnalysisMixin:
                 f"   - 현재 연도({cur_year}년)를 기준으로 판단합니다.\n\n"
                 "2. [하자기간 내 구간 표출]\n"
                 "   - 각 보수이력의 공법에 설정된 하자담보책임기간을 확인\n"
-                "   - 보수연도 + 하자기간(만료연도)이 기준연도 이상인 구간만 표출\n"
-                "   - 즉, 현재 하자담보책임기간 내에 있는 구간만 대상\n\n"
-                "3. [정렬]\n"
-                "   - 만료연도가 빠른(임박한) 구간을 최상단에 배치\n"
-                "   - 금년에 만료되는 구간(잔여 0년)이 가장 위에 표시\n\n"
-                "4. [필터]\n"
-                "   - 컬럼 머리글 클릭 시 노선·이정·방향·공법 등으로 필터 가능\n"
+                "   - 보수연도 + 하자기간(만료연도)이 기준연도 이상인 구간만 표출\n\n"
+                "3. [점검현황 컬럼]\n"
+                "   - 현재 연도·월 기준으로 수행해야 할 점검을 자동 산출합니다.\n"
+                "   - 첫 점검 연도(보수연도+1): 상반기=최초하자점검, 하반기=하반기정기점검\n"
+                "     (최초하자점검은 상반기 정기점검 대체)\n"
+                "   - 중간 연도: 상반기/하반기 정기점검\n"
+                "   - 만료 연도: 상반기=상반기정기점검, 하반기=하자만료점검\n"
+                "     (하자만료점검은 하반기 정기점검 대체)\n"
+                "   - '필요'=미완료, '완료'=완료, '미완료'=기한 초과\n\n"
+                "4. [더블클릭]\n"
+                "   - 행을 더블클릭하면 연도별 점검기록 입력 팝업이 열립니다.\n"
+                "   - 체크박스 클릭 시 즉시 저장되며, 점검현황 컬럼이 갱신됩니다.\n\n"
+                "5. [정렬]\n"
+                "   - 만료연도가 빠른(임박한) 구간을 최상단에 배치\n\n"
+                "6. [필터]\n"
+                "   - 컬럼 머리글 클릭 시 항목별 필터 가능\n"
                 "   - 상단 검색창으로 키워드 검색 가능\n"
             ))
             txt.configure(state="disabled")
@@ -1295,21 +1556,23 @@ class AnalysisMixin:
         style.map("Inspect.Treeview.Heading", background=[("active", "#2D3748")])
         style.configure("Inspect.Treeview", background="#2D3748", fieldbackground="#2D3748",
                         foreground="white", rowheight=26, borderwidth=0)
-        style.map("Inspect.Treeview", background=[("selected", "#7B2222")])
+        style.map("Inspect.Treeview", background=[("selected", "#4A5568")])
 
         i_cols = ("route", "section", "direction", "lane", "method",
-                  "category", "warranty", "work_year", "expire_year", "remaining")
+                  "category", "warranty", "work_year", "expire_year", "remaining",
+                  "inspect_status")
         i_names = {
-            "route":       "노선",
-            "section":     "이정(km)",
-            "direction":   "방향",
-            "lane":        "차로",
-            "method":      "적용공법",
-            "category":    "하자카테고리",
-            "warranty":    "하자기간(년)",
-            "work_year":   "보수연도",
-            "expire_year": "만료연도",
-            "remaining":   "잔여(년)",
+            "route":          "노선",
+            "section":        "이정(km)",
+            "direction":      "방향",
+            "lane":           "차로",
+            "method":         "적용공법",
+            "category":       "하자카테고리",
+            "warranty":       "하자기간(년)",
+            "work_year":      "보수연도",
+            "expire_year":    "만료연도",
+            "remaining":      "잔여(년)",
+            "inspect_status": "점검현황",
         }
 
         tree_frame = ctk.CTkFrame(dlg, fg_color="transparent")
@@ -1320,18 +1583,23 @@ class AnalysisMixin:
         for c in i_cols:
             tree.heading(c, text=i_names[c])
             tree.column(c, anchor="center")
-        tree.column("route",       width=120)
-        tree.column("section",     width=150)
-        tree.column("direction",   width=80)
-        tree.column("lane",        width=60)
-        tree.column("method",      width=140)
-        tree.column("category",    width=110)
-        tree.column("warranty",    width=85)
-        tree.column("work_year",   width=75)
-        tree.column("expire_year", width=75)
-        tree.column("remaining",   width=70)
-        # 금년 만료(잔여 0년) 강조
-        tree.tag_configure("expire_now", background="#7B2222", foreground="#FFFFFF")
+        tree.column("route",          width=110)
+        tree.column("section",        width=140)
+        tree.column("direction",      width=70)
+        tree.column("lane",           width=55)
+        tree.column("method",         width=130)
+        tree.column("category",       width=100)
+        tree.column("warranty",       width=75)
+        tree.column("work_year",      width=70)
+        tree.column("expire_year",    width=70)
+        tree.column("remaining",      width=65)
+        tree.column("inspect_status", width=200)
+
+        # 행 색상 태그
+        tree.tag_configure("check_need",     background="#FFF3CD", foreground="#5D4037")   # 점검 필요(노란)
+        tree.tag_configure("check_overdue",  background="#FFCCBC", foreground="#BF360C")   # 기한초과(주황)
+        tree.tag_configure("check_done",     background="#C8E6C9", foreground="#1B5E20")   # 완료(초록)
+        tree.tag_configure("expire_now",     background="#7B2222", foreground="#FFFFFF")   # 금년만료(적)
         tree.tag_configure("normal")
 
         sb = ctk.CTkScrollbar(tree_frame, orientation="vertical", command=tree.yview)
@@ -1342,19 +1610,34 @@ class AnalysisMixin:
         def get_val(item, col):
             return str(item.get(col, ""))
 
+        def _status_tag(status: str, remaining: int) -> str:
+            if "미완료" in status:
+                return "check_overdue"
+            if "필요" in status:
+                return "check_need"
+            if "완료" in status:
+                return "check_done"
+            if remaining == 0:
+                return "expire_now"
+            return "normal"
+
         def refresh_tree():
             for row in tree.get_children():
                 tree.delete(row)
             kwd = var_filter.get().lower()
             shown = 0
             for item in inspect_data:
+                # 점검현황은 렌더 시점마다 재계산 (체크박스 변경 즉시 반영)
+                status = self._compute_inspection_status(item, cur_year, cur_month)
+                item["inspect_status"] = status
                 row_vals = {c: get_val(item, c) for c in i_cols}
                 if kwd and kwd not in " ".join(row_vals.values()).lower():
                     continue
                 if any(row_vals[c] not in active_filters[c] for c in active_filters):
                     continue
-                tag = "expire_now" if item.get("remaining") == 0 else "normal"
-                tree.insert("", "end", values=[row_vals[c] for c in i_cols], tags=(tag,))
+                tag = _status_tag(status, item.get("remaining", 99))
+                tree.insert("", "end", values=[row_vals[c] for c in i_cols],
+                            tags=(tag,), iid=str(id(item)))
                 shown += 1
             lbl_count.configure(text=f"총 {shown}건 (하자기간 내)" if shown else "")
 
@@ -1373,12 +1656,11 @@ class AnalysisMixin:
                     except ValueError:
                         continue
                     if work_year > cur_year:
-                        continue  # 미래 시공(계획 등) 제외
+                        continue
 
                     method   = entry.get("method", "")
                     warranty = get_method_warranty_period(method)
                     expire_year = work_year + warranty
-                    # 하자담보책임기간이 이미 만료된 구간은 제외
                     if expire_year < cur_year:
                         continue
                     remaining = expire_year - cur_year
@@ -1390,21 +1672,21 @@ class AnalysisMixin:
                         e_start, e_end = 0.0, 0.0
 
                     inspect_data.append({
-                        "route":       rname,
-                        "section":     f"{e_start:.3f}~{e_end:.3f}",
-                        "direction":   entry.get("direction", ""),
-                        "lane":        entry.get("lane", "전차로"),
-                        "method":      method,
-                        "category":    METHOD_CATEGORY_MAP.get(method, "") or "-",
-                        "warranty":    warranty,
-                        "work_year":   work_year,
-                        "expire_year": expire_year,
-                        "remaining":   remaining,
-                        "_start":      e_start,
-                        "_end":        e_end,
+                        "route":          rname,
+                        "section":        f"{e_start:.3f}~{e_end:.3f}",
+                        "direction":      entry.get("direction", ""),
+                        "lane":           entry.get("lane", "전차로"),
+                        "method":         method,
+                        "category":       METHOD_CATEGORY_MAP.get(method, "") or "-",
+                        "warranty":       warranty,
+                        "work_year":      work_year,
+                        "expire_year":    expire_year,
+                        "remaining":      remaining,
+                        "inspect_status": "-",
+                        "_start":         e_start,
+                        "_end":           e_end,
                     })
 
-            # 만료가 임박한 순(만료연도 오름차순 → 잔여 오름차순), 동률은 노선/이정 순
             inspect_data.sort(key=lambda x: (x["expire_year"], x["remaining"],
                                              x["route"], x["_start"]))
             active_filters.clear()
@@ -1521,20 +1803,18 @@ class AnalysisMixin:
         tree.bind("<Button-1>", on_head_click)
 
         def on_row_dblclick(e):
+            region = tree.identify_region(e.x, e.y)
+            if region != "cell":
+                return
             sel = tree.selection()
             if not sel:
                 return
-            vals = tree.item(sel[0], "values")
-            try:
-                rname = str(vals[0])
-                parts = str(vals[1]).split("~")
-                s = float(parts[0])
-                en = float(parts[1])
-                direction = str(vals[2]) if len(vals) > 2 else None
-                lane = str(vals[3]) if len(vals) > 3 else None
-                self.navigate_to_section(rname, s, en, direction=direction, lane=lane)
-            except Exception:
-                pass
+            iid = sel[0]
+            # iid = str(id(item)) 로 저장했으므로 inspect_data에서 찾기
+            target = next((it for it in inspect_data if str(id(it)) == iid), None)
+            if target is None:
+                return
+            self._open_inspect_record_popup(target, dlg, refresh_tree)
         tree.bind("<Double-1>", on_row_dblclick)
 
         def export_excel():
