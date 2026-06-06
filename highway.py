@@ -182,6 +182,9 @@ class MaintenanceApp(
         self.view_rd = tk.BooleanVar(value=False)
         self.view_iri = tk.BooleanVar(value=False)
 
+        # 하자점검 기록: key -> {year -> {"initial","regular_h1","regular_h2","expire"}}
+        self._defect_inspection_records = {}
+
         self._build_ui()
         self.draw_schematic()
         # 실행 시 자동 불러오기(동일 폴더 내 *_maintenance_history.csv)
