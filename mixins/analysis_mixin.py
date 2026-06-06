@@ -1388,9 +1388,10 @@ class AnalysisMixin:
         COL_L = ["연도", "최초하자점검", "상반기 정기점검", "하반기 정기점검", "하자만료점검"]
         th = ctk.CTkFrame(popup, fg_color="#D8E8F8", corner_radius=0)
         th.pack(fill="x")
-        for lbl, w in zip(COL_L, COL_W):
+        for ci, (lbl, w) in enumerate(zip(COL_L, COL_W)):
+            th.columnconfigure(ci, minsize=w, weight=0)
             ctk.CTkLabel(th, text=lbl, font=(self.font_family, 10, "bold"),
-                         text_color="#1A3A5C", width=w, anchor="center").pack(side="left", pady=6)
+                         text_color="#1A3A5C", anchor="center").grid(row=0, column=ci, pady=6, padx=4, sticky="ew")
 
         scroll = ctk.CTkScrollableFrame(popup, fg_color="white")
         scroll.pack(fill="both", expand=True)
@@ -1414,20 +1415,22 @@ class AnalysisMixin:
             avail = self._get_available_checks(y, first_year, last_year)
             bg = "#F5F9FF" if ri % 2 == 0 else "#FFFFFF"
             row_f = ctk.CTkFrame(scroll, fg_color=bg, corner_radius=0)
-            row_f.pack(fill="x")
+            row_f.pack(fill="x", pady=0)
+            # grid로 열 고정 — pack(side="left")는 CTkScrollableFrame 내부에서 정렬이 틀어짐
+            for ci, w in enumerate(COL_W):
+                row_f.columnconfigure(ci, minsize=w, weight=0)
+
             ctk.CTkLabel(row_f, text=f"{y}년",
                          font=(self.font_family, 11, "bold"),
                          text_color="#1A3A5C",
-                         width=COL_W[0], anchor="center").pack(side="left", pady=8)
-            for (fd, _lbl), w in zip(CHECK_FIELDS, COL_W[1:]):
-                cell = ctk.CTkFrame(row_f, fg_color="transparent", width=w)
-                cell.pack(side="left")
-                cell.pack_propagate(False)
+                         anchor="center").grid(row=0, column=0, pady=8, padx=4, sticky="nsew")
+
+            for ci, (fd, _lbl) in enumerate(CHECK_FIELDS):
                 if avail.get(fd, False):
                     cur_val = self._defect_inspection_records.get(key, {}).get(y, {}).get(fd, False)
                     var = tk.BooleanVar(value=cur_val)
                     ctk.CTkCheckBox(
-                        cell, text="완료",
+                        row_f, text="완료",
                         variable=var,
                         command=make_toggle(key, y, fd, var),
                         font=(self.font_family, 10),
@@ -1437,11 +1440,11 @@ class AnalysisMixin:
                         hover_color=PRIMARY_BLUE_HOVER,
                         border_color="#AFC4DE",
                         text_color=TITLE_TEXT,
-                    ).pack(pady=6, padx=4)
+                    ).grid(row=0, column=ci + 1, pady=6, padx=4)
                 else:
-                    ctk.CTkLabel(cell, text="해당없음",
+                    ctk.CTkLabel(row_f, text="해당없음",
                                  font=(self.font_family, 9),
-                                 text_color="#BBBBBB").pack(pady=8, padx=4)
+                                 text_color="#BBBBBB").grid(row=0, column=ci + 1, pady=8, padx=4)
 
         # 하단 버튼
         btn_f = ctk.CTkFrame(popup, fg_color="transparent")
