@@ -703,12 +703,17 @@ class WindowMixin:
 
             # 방향 메타 우선 복구 → 없으면 entries에서 유추 → 최후 기본값
             dir1_meta, dir2_meta = None, None
+            hq_meta = ""
             try:
                 for row in rows:
                     d1 = (row.get("route_dir1") or "").strip()
                     d2 = (row.get("route_dir2") or "").strip()
                     if d1 and d2:
                         dir1_meta, dir2_meta = d1, d2
+                    hq_val = (row.get("route_hq") or "").strip()
+                    if hq_val:
+                        hq_meta = hq_val
+                    if dir1_meta and dir2_meta and hq_meta:
                         break
             except Exception:
                 pass
@@ -736,10 +741,14 @@ class WindowMixin:
                 self.routes[idx]["end_km"] = float(end_km)
                 self.routes[idx]["entries"] = entries
                 self.routes[idx]["directions"] = dirs
+                if hq_meta:
+                    self.routes[idx]["hq"] = hq_meta
             else:
                 self.add_route(rname, start_km, end_km, dirs)
                 new_idx = self.current_route_index
                 self.routes[new_idx]["entries"] = entries
+                if hq_meta:
+                    self.routes[new_idx]["hq"] = hq_meta
                 name_to_idx[rname] = new_idx
                 created_routes += 1
             
