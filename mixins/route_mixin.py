@@ -113,6 +113,7 @@ class RouteMixin:
             "name": route_name,
             "start_km": float(start_km),
             "end_km": float(end_km),
+            "hq": "",
             "directions": directions if directions is not None else self.generate_directions_from_name(route_name),
             "entries": [],
             "canvas": canvas,
@@ -241,6 +242,7 @@ class RouteMixin:
             var_dir1 = tk.StringVar(value=dirs[0].replace("방향", ""))
             var_dir2 = tk.StringVar(value=dirs[1].replace("방향", "") if len(dirs) > 1 else "")
             var_lanes = tk.StringVar(value=str(route.get("lane_count", 4)))
+            var_hq = tk.StringVar(value=route.get("hq", ""))
 
             ctk.CTkLabel(body_edit, text="노선명").grid(row=0, column=0, sticky="w", padx=4, pady=4)
             ctk.CTkEntry(body_edit, textvariable=var_name, width=160).grid(row=0, column=1, columnspan=2, sticky="w", padx=4, pady=4)
@@ -255,6 +257,8 @@ class RouteMixin:
             ctk.CTkLabel(body_edit, text="차로 수").grid(row=3, column=0, sticky="w", padx=4, pady=4)
             cb_lanes = self._create_styled_combobox(body_edit, variable=var_lanes, values=[str(i) for i in range(1, 7)], width=80, state="readonly")
             cb_lanes.grid(row=3, column=1, sticky="w", padx=4, pady=4)
+            ctk.CTkLabel(body_edit, text="본부/지사명").grid(row=4, column=0, sticky="w", padx=4, pady=4)
+            ctk.CTkEntry(body_edit, textvariable=var_hq, width=160).grid(row=4, column=1, columnspan=3, sticky="w", padx=4, pady=4)
 
             def do_save():
                 # 값 검증 및 반영
@@ -282,7 +286,8 @@ class RouteMixin:
                 if dir1 and dir2:
                     route['directions'] = [f"{dir1}방향", f"{dir2}방향"]
                 route['lane_count'] = lanes
-                
+                route['hq'] = var_hq.get().strip()
+
                 self.notebook.tab(route['tab_frame'], text=name)
                 self.refresh_route_controls_from_route(route)
                 self.draw_schematic()
@@ -361,6 +366,7 @@ class RouteMixin:
         var_dir1 = tk.StringVar(value="")
         var_dir2 = tk.StringVar(value="")
         var_lanes = tk.StringVar(value="4")
+        var_hq = tk.StringVar(value="")
 
         ctk.CTkLabel(body, text="노선명").grid(row=0, column=0, sticky="w", padx=4, pady=4)
         ent_name = ctk.CTkEntry(body, textvariable=var_name, width=160)
@@ -385,6 +391,8 @@ class RouteMixin:
         ctk.CTkLabel(body, text="차로 수").grid(row=3, column=0, sticky="w", padx=4, pady=4)
         cb_lanes = self._create_styled_combobox(body, variable=var_lanes, values=[str(i) for i in range(1, 7)], width=80, state="readonly")
         cb_lanes.grid(row=3, column=1, sticky="w", padx=4, pady=4)
+        ctk.CTkLabel(body, text="본부/지사명").grid(row=4, column=0, sticky="w", padx=4, pady=4)
+        ctk.CTkEntry(body, textvariable=var_hq, width=160).grid(row=4, column=1, columnspan=3, sticky="w", padx=4, pady=4)
 
         btns = ctk.CTkFrame(dlg, fg_color="transparent")
         btns.pack(fill="x", padx=10, pady=10)
@@ -420,6 +428,7 @@ class RouteMixin:
             self.add_route(name, s, e)
             new_route = self.routes[-1]
             new_route['lane_count'] = lanes
+            new_route['hq'] = var_hq.get().strip()
             if custom_dirs:
                 new_route['directions'] = custom_dirs
             dlg.destroy()

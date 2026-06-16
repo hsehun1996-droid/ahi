@@ -64,13 +64,13 @@ from canvas_utils import (
 )
 from mixins import (
     UIMixin, RouteMixin, ICMixin, AnalysisMixin,
-    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin, SelectMixin,
+    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin, SelectMixin, StatsMixin,
 )
 
 
 class MaintenanceApp(
     UIMixin, RouteMixin, ICMixin, AnalysisMixin,
-    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin, SelectMixin,
+    EntryMixin, IOMixin, WindowMixin, CanvasMixin, PlanMixin, SelectMixin, StatsMixin,
     ctk.CTk,
 ):
     def __init__(self):

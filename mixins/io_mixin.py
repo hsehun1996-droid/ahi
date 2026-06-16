@@ -903,7 +903,7 @@ class IOMixin:
                 writer.writerow([
                     "route_name", "route_start_km", "route_end_km",
                     "start_km", "end_km", "method", "direction", "lane", "work_date", "year", "timestamp",
-                    "row_type", "route_dir1", "route_dir2"
+                    "row_type", "route_dir1", "route_dir2", "route_hq"
                 ])
                 
                 for route in self.routes:
@@ -917,7 +917,7 @@ class IOMixin:
                         writer.writerow([
                             route.get("name", ""), route.get("start_km", 0.0), route.get("end_km", 0.0),
                             "", "", "", "", "", "", "", "",
-                            "meta", dir1, dir2
+                            "meta", dir1, dir2, route.get("hq", "")
                         ])
                     else:
                         for it in entries:
@@ -929,7 +929,7 @@ class IOMixin:
                                 route.get("name", ""), route.get("start_km", 0.0), route.get("end_km", 0.0),
                                 it.get("start", 0.0), it.get("end", 0.0), it.get("method", ""),
                                 it.get("direction", ""), it.get("lane", ""), wd, year, it.get("ts", ""),
-                                "entry", dir1, dir2
+                                "entry", dir1, dir2, route.get("hq", "")
                             ])
             saved_files.append(hist_fname)
 
@@ -1139,7 +1139,8 @@ class IOMixin:
                 end_km REAL,
                 dir1 TEXT,
                 dir2 TEXT,
-                lane_count INTEGER
+                lane_count INTEGER,
+                hq TEXT DEFAULT ''
             );
             CREATE TABLE entries (
                 route_name TEXT,
@@ -1220,6 +1221,7 @@ class IOMixin:
                     float(route.get("end_km", 0.0)),
                     dir1, dir2,
                     int(route.get("lane_count", 4)),
+                    str(route.get("hq", "") or ""),
                 ))
 
                 for it in route.get("entries", []):
@@ -1295,7 +1297,7 @@ class IOMixin:
                         if isinstance(r, dict):
                             ic_rows.append((rname, iname, ikm, str(r.get("name", "")), float(r.get("km", ikm))))
 
-            cur.executemany("INSERT INTO routes VALUES (?, ?, ?, ?, ?, ?)", route_rows)
+            cur.executemany("INSERT INTO routes VALUES (?, ?, ?, ?, ?, ?, ?)", route_rows)
             cur.executemany("INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", entry_rows)
             cur.executemany("INSERT INTO ics VALUES (?, ?, ?, ?, ?)", ic_rows)
             cur.executemany("INSERT INTO structures VALUES (?, ?, ?, ?, ?, ?, ?)", struct_rows)
@@ -1355,13 +1357,23 @@ class IOMixin:
                     CATEGORY_WARRANTY[str(cat)] = {"period": int(period or 3), "rate": float(rate or 100.0)}
 
             route_map = {}
-            for route_name, start_km, end_km, dir1, dir2, lane_count in cur.execute(
-                "SELECT route_name, start_km, end_km, dir1, dir2, lane_count FROM routes ORDER BY route_name"
-            ):
+            try:
+                _route_rows = list(cur.execute(
+                    "SELECT route_name, start_km, end_km, dir1, dir2, lane_count, hq FROM routes ORDER BY route_name"
+                ))
+            except Exception:
+                _route_rows = [
+                    (r[0], r[1], r[2], r[3], r[4], r[5], "")
+                    for r in cur.execute(
+                        "SELECT route_name, start_km, end_km, dir1, dir2, lane_count FROM routes ORDER BY route_name"
+                    )
+                ]
+            for route_name, start_km, end_km, dir1, dir2, lane_count, hq in _route_rows:
                 dirs = [str(dir1 or DIRECTIONS[0]), str(dir2 or DIRECTIONS[1])]
                 self.add_route(str(route_name), float(start_km or 0.0), float(end_km or 0.0), dirs)
                 route = self.routes[self.current_route_index]
                 route["lane_count"] = int(lane_count or 4)
+                route["hq"] = str(hq or "")
                 route_map[str(route_name)] = route
 
             if "entries" in tables:

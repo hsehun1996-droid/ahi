@@ -911,6 +911,13 @@ class UIMixin:
         # 구분선
         ctk.CTkFrame(nav_bar, width=1, height=18, fg_color=NAV_BORDER).pack(side="left", padx=10, pady=14)
 
+        # 현황관리 (통계 센터)
+        self._create_button(nav_bar, text="현황관리",
+                      command=self.on_stats_dashboard,
+                      fg_color="#2F855A", hover_color="#276749",
+                      text_color="#FFFFFF", width=120, height=36, corner_radius=10,
+                      font=(self.font_family, 14, "bold")).pack(side="left", padx=3, pady=8)
+
         # 사업계획 (강조) - 개량 우선순위 산정 + 사업계획 작성/확정
         self._create_button(nav_bar, text="사업계획",
                       command=self.on_business_plan,
