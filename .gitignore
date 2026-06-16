@@ -14,3 +14,6 @@ display_settings.json
 
 # ghostscript 폴더에 잘못 저장된 세이브 파일
 ghostscript/all_*.csv
+
+# Claude Code 내부 폴더
+.claude/worktrees/
