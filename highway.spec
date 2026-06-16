@@ -87,7 +87,7 @@ hiddenimports = [
     "utils",
     "canvas_utils",
     "dropdown_widget",
-    "hwp_export",
+    "hwpx_export",
     # 운영계획변경 한글(HWP) 자동화 (방법 A: COM) — 대상 PC에 한글+pywin32 필요
     "win32com",
     "win32com.client",
