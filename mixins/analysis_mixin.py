@@ -302,10 +302,23 @@ class AnalysisMixin:
             try:
                 plan_year = int(var_plan_year.get())
                 base_year = str(plan_year - 1)          # 전년도 (DI 기준)
-                recent_years = [str(y) for y in range(plan_year - 3, plan_year)]  # 3개년
             except ValueError:
                 self._show_error("오류", "연도를 확인하세요.")
                 return
+
+            # 모든 노선 DI/HPCI 데이터에서 사용 가능한 연도 동적 수집
+            all_data_years = set()
+            for _r in self.routes:
+                for _vm in _r.get('di_data', {}).values():
+                    all_data_years.update(_vm.keys())
+                for _vm in _r.get('hpci_data', {}).values():
+                    all_data_years.update(_vm.keys())
+            recent_years = sorted(
+                y for y in all_data_years
+                if y.isdigit() and int(y) < plan_year
+            )
+            if not recent_years:
+                recent_years = [str(y) for y in range(plan_year - 3, plan_year)]
 
             candidates = []
 
@@ -418,7 +431,7 @@ class AnalysisMixin:
                         if curr_avg < 5.0:
                             continue
 
-                        # ── Step 6: 3개년 DI 평균 (1차 정렬 기준) ─────────────────
+                        # ── Step 6: 전체 데이터 연도 DI 평균 (1차 정렬 기준) ──────
                         sum_di3 = 0; cnt_di3 = 0
                         for p_km, _ in seg_pts:
                             v_map = (di_data.get((d, l, f"{p_km:.2f}")) or
@@ -431,7 +444,7 @@ class AnalysisMixin:
                                         except Exception: pass
                         score_di = (sum_di3 / cnt_di3) if cnt_di3 > 0 else curr_avg
 
-                        # ── Step 7: 3개년 HPCI 평균 (2차 정렬 기준) ───────────────
+                        # ── Step 7: 전체 데이터 연도 HPCI 평균 (2차 정렬 기준) ────
                         sum_hpci = 0; cnt_hpci = 0
                         for p_km, _ in seg_pts:
                             h_map = (hpci_data.get((d, l, f"{p_km:.2f}")) or
@@ -761,8 +774,10 @@ class AnalysisMixin:
             last_calculated_data = all_results
             active_filters.clear()
             refresh_tree()
+            yr_start = recent_years[0] if recent_years else str(plan_year - 3)
+            yr_end   = recent_years[-1] if recent_years else str(plan_year - 1)
             self._show_priority_complete_popup("완료",
-                f"누적 포장불량상태({plan_year - 3}년~{plan_year - 1}년) 분석 결과\n총 {len(all_results)}개 구간 선정완료.",
+                f"누적 포장불량상태({yr_start}년~{yr_end}년) 분석 결과\n총 {len(all_results)}개 구간 선정완료.",
                 parent=dlg
             )
 
