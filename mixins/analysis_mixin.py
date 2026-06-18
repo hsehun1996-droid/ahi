@@ -762,7 +762,7 @@ class AnalysisMixin:
             active_filters.clear()
             refresh_tree()
             self._show_priority_complete_popup("완료",
-                f"총 {len(all_results)}개 구간 선정됨.",
+                f"누적 포장불량상태({plan_year - 3}년~{plan_year - 1}년) 분석 결과\n총 {len(all_results)}개 구간 선정완료.",
                 parent=dlg
             )
 

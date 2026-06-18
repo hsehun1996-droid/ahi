@@ -10,7 +10,7 @@ import customtkinter as ctk
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from constants import (
     PRIMARY_BLUE, PRIMARY_BLUE_HOVER, APP_BG, CARD_BG, CARD_BORDER,
-    TITLE_TEXT, ACCENT_RED, DIRECTIONS,
+    TITLE_TEXT, ACCENT_RED, DIRECTIONS, GRID_KM,
 )
 
 _CHART_COLORS = [
@@ -374,6 +374,8 @@ class StatsMixin:
             "hpci": "hpci_data", "rd": "rd_data",
         }
         data_key = key_map.get(indicator, "di_data")
+        # DI·HPCI: 값 ≥ 5인 셀의 연장(km) 합계 / IRI·RD: 구간 평균
+        length_mode = indicator in ("di", "hpci")
 
         result = {}
         for route in self.routes:
@@ -382,21 +384,35 @@ class StatsMixin:
                 continue
 
             data_map = route.get(data_key, {})
-            year_values = {}
-            for _cell_key, year_dict in data_map.items():
-                if not isinstance(year_dict, dict):
-                    continue
-                for yr, val in year_dict.items():
-                    try:
-                        year_values.setdefault(yr, []).append(float(val))
-                    except (ValueError, TypeError):
-                        pass
 
-            if year_values:
-                result[route_name] = {
-                    yr: sum(vs) / len(vs)
-                    for yr, vs in year_values.items() if vs
-                }
+            if length_mode:
+                year_lengths = {}
+                for _cell_key, year_dict in data_map.items():
+                    if not isinstance(year_dict, dict):
+                        continue
+                    for yr, val in year_dict.items():
+                        try:
+                            if float(val) >= 5.0:
+                                year_lengths[yr] = year_lengths.get(yr, 0.0) + GRID_KM
+                        except (ValueError, TypeError):
+                            pass
+                if year_lengths:
+                    result[route_name] = year_lengths
+            else:
+                year_values = {}
+                for _cell_key, year_dict in data_map.items():
+                    if not isinstance(year_dict, dict):
+                        continue
+                    for yr, val in year_dict.items():
+                        try:
+                            year_values.setdefault(yr, []).append(float(val))
+                        except (ValueError, TypeError):
+                            pass
+                if year_values:
+                    result[route_name] = {
+                        yr: sum(vs) / len(vs)
+                        for yr, vs in year_values.items() if vs
+                    }
 
         return result
 
@@ -405,8 +421,10 @@ class StatsMixin:
 
         indicator = self._stats_cond_indicator.get()
         label_map = {
-            "di": "DI지수 (평균)", "iri": "IRI등급 (평균)",
-            "hpci": "HPCI등급 (평균)", "rd": "RD등급 (평균)",
+            "di":   "DI≥5 연장(km)",
+            "hpci": "HPCI≥5 연장(km)",
+            "iri":  "IRI등급 (평균)",
+            "rd":   "RD등급 (평균)",
         }
         y_label = label_map.get(indicator, "지표값")
 
@@ -436,14 +454,18 @@ class StatsMixin:
         }
 
         all_vals = [v for rd in data.values() for v in rd.values()]
-        min_val = min(all_vals) if all_vals else 0
         max_val = max(all_vals) if all_vals else 10
-        val_range = max_val - min_val
-        if val_range < 0.001:
-            val_range = 1
-        pad_v = val_range * 0.15
-        y_min = max(0, min_val - pad_v)
-        y_max = max_val + pad_v
+        length_mode = indicator in ("di", "hpci")
+        if length_mode:
+            y_min = 0
+            y_max = max_val * 1.15 if max_val > 0 else 1
+        else:
+            min_val = min(all_vals) if all_vals else 0
+            val_range = max_val - min_val
+            if val_range < 0.001:
+                val_range = 1
+            y_min = max(0, min_val - val_range * 0.15)
+            y_max = max_val + val_range * 0.15
         y_range = y_max - y_min if (y_max - y_min) > 0 else 1
 
         y_steps = 5
